@@ -1,0 +1,24 @@
+CompileFlags:
+  Add:
+    - "-std=c++17"
+    - "-Wall"
+    - "-Wextra"
+  Remove:
+    - "-W*" # Remove all warning flags, clangd will add its own
+
+Index:
+  Background: Build
+
+Diagnostics:
+  ClangTidy:
+    Add: ["readability-*", "performance-*", "modernize-*"]
+    Remove:
+      ["readability-magic-numbers", "readability-implicit-bool-conversion"]
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+
+Hover:
+  ShowAKA: true
