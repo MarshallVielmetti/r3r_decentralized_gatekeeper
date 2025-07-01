@@ -13,8 +13,15 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-# Add debug flags
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+# Add option to control AddressSanitizer (disable for Julia compatibility)
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+
+# Add debug flags with optional sanitizers
+if(ENABLE_ASAN)
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG -fsanitize=address")
+else()
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # Add source files
@@ -23,30 +30,46 @@ file(GLOB SOURCES "src/*.cpp")
 # Create library or executable
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-# Find OMPL library installed via Homebrew
-set(OMPL_ROOT "/opt/homebrew/opt/ompl")
-set(OMPL_INCLUDE_DIR "${OMPL_ROOT}/include/ompl-1.7")
-set(OMPL_LIBRARIES "${OMPL_ROOT}/lib/libompl.dylib")
+option(USE_LOCAL_OMPL "Use OMPL source instead of installed" ON)
 
-# Find Boost library installed via Homebrew (required by OMPL)
-set(BOOST_ROOT "/opt/homebrew/opt/boost")
-set(BOOST_INCLUDE_DIR "${BOOST_ROOT}/include")
+if(USE_LOCAL_OMPL)
+        set(OMPL_LOCAL_PATH "../../../ompl" CACHE PATH "Path to local OMPL source directory")
 
-# Find Eigen library installed via Homebrew (required by OMPL)
-set(EIGEN_ROOT "/opt/homebrew/opt/eigen")
-set(EIGEN_INCLUDE_DIR "${EIGEN_ROOT}/include/eigen3")
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${OMPL_LOCAL_PATH}/CMakeLists.txt")
+            message(FATAL_ERROR "OMPL source directory not found at ${OMPL_LOCAL_PATH}. Please check the path.")
+        endif()
+
+        message(STATUS "Using local OMPL source at ${OMPL_LOCAL_PATH}")
+
+        # Prevent OMPL from installing
+        set(OMPL_REGISTRATION OFF CACHE BOOL "Disable OMPL registration" FORCE)
+        set(OMPL_BUILD_DEMOS OFF CACHE BOOL "Disable OMPL demos" FORCE)
+        set(OMPL_BUILD_TESTS OFF CACHE BOOL "Disable OMPL tests" FORCE)
+
+        add_subdirectory(${OMPL_LOCAL_PATH} ${CMAKE_CURRENT_BINARY_DIR}/ompl_build)
+
+        set(OMPL_TARGET ompl)
+else()
+    find_package(ompl REQUIRED)
+    set(OMPL_TARGET ompl)
+endif()
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${OMPL_INCLUDE_DIR}
-    ${BOOST_INCLUDE_DIR}
-    ${EIGEN_INCLUDE_DIR}
 )
 
 # Link OMPL library
-target_link_libraries(${PROJECT_NAME} ${OMPL_LIBRARIES})
+# The add_subdirectory command should create an 'ompl' target.
+# We link it as PUBLIC so that targets that link against ompl_src (like our tests)
+# also get the OMPL headers and link against the ompl library.
+target_link_libraries(${PROJECT_NAME} PUBLIC ompl)
+
+# Add sanitizer flags to linker for debug builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND ENABLE_ASAN)
+    target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
+endif()
 
 # Test configuration
 option(BUILD_TESTS "Build test executables" ON)
@@ -63,16 +86,12 @@ if(BUILD_TESTS)
         # Create executable for this test
         add_executable(${TEST_NAME} ${TEST_SOURCE})
         
-        # Link against our library and its dependencies
-        target_link_libraries(${TEST_NAME} ${PROJECT_NAME} ${OMPL_LIBRARIES})
+        # Link against our library. Because we linked ompl_src to ompl as PUBLIC,
+        # CMake will automatically handle linking the test executable to ompl as well.
+        target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
         
-        # Include directories for tests
-        target_include_directories(${TEST_NAME} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${OMPL_INCLUDE_DIR}
-            ${BOOST_INCLUDE_DIR}
-            ${EIGEN_INCLUDE_DIR}
-        )
+        # Include directories for tests are now inherited from the main library target.
+        # No need to specify them again here.
         
         # Set the same C++ standard for tests
         set_target_properties(${TEST_NAME} PROPERTIES
@@ -81,9 +100,23 @@ if(BUILD_TESTS)
         )
         
         # Add debug flags for tests
-        target_compile_options(${TEST_NAME} PRIVATE
-            $<$<CONFIG:Debug>:-g -O0 -DDEBUG>
-            $<$<CONFIG:Release>:-O3 -DNDEBUG>
-        )
+        if(ENABLE_ASAN)
+            target_compile_options(${TEST_NAME} PRIVATE
+                $<$<CONFIG:Debug>:-g -O0 -DDEBUG -fsanitize=address>
+                $<$<CONFIG:Release>:-O3 -DNDEBUG>
+            )
+        else()
+            target_compile_options(${TEST_NAME} PRIVATE
+                $<$<CONFIG:Debug>:-g -O0 -DDEBUG>
+                $<$<CONFIG:Release>:-O3 -DNDEBUG>
+            )
+        endif()
+        
+        # Add sanitizer link flags for debug builds
+        if(ENABLE_ASAN)
+            target_link_options(${TEST_NAME} PRIVATE
+                $<$<CONFIG:Debug>:-fsanitize=address>
+            )
+        endif()
     endforeach()
 endif()

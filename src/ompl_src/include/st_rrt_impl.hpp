@@ -3,11 +3,13 @@
 #include <array>
 #include <functional>
 #include <ompl/base/PlannerStatus.h>
+#include <ompl/geometric/PathGeometric.h>
 #include <optional>
 #include <vector>
 
 // Namespace abbreviations (matching the implementation file)
 namespace ob = ompl::base;
+namespace og = ompl::geometric;
 // namespace og = ompl::geometric;
 
 // Forward declarations
@@ -28,10 +30,14 @@ auto plan_strrt(
     const std::function<bool(double, double, double)> &is_valid_julia)
     -> std::optional<std::vector<std::array<double, 3>>>;
 
+void geometric_path_to_serialized(const og::PathGeometric &path,
+                                  int max_path_length, double *path_out,
+                                  int *actual_path_length);
+
 // // C interface
 extern "C" {
 // Julia-compatible C interface
-using ObstacleFunctionC = void (*)(float, double *, double *, int *);
+// using ObstacleFunctionC = void (*)(float, double *, double *, int *);
 using IsValidC = int (*)(double, double, double);
 
 // typedef void (*ObstacleFunctionC)(float time, double *x_out, double *y_out,

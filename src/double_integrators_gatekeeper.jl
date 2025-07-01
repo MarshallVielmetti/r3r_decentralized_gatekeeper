@@ -1,6 +1,7 @@
 module Gatekeeper2D
 
 using ..STRRT_STAR
+using ..R3RCommon
 
 using Agents
 using StaticArrays
@@ -10,25 +11,10 @@ using OrdinaryDiffEq, DiffEqCallbacks
 
 using JuMP, OSQP
 
-export CompositeTrajectory, Gatekeeper2D
 export agent_should_replan, try_to_join_network!, construct_candidate, validate_candidate, update_committed_trajectory!, propagate_along_trajectory!
 export get_control_input, get_position, reset_mpc_cache!, print_mpc_stats
 export scaled_time
 
-
-struct CompositeTrajectory{TN,TTN,TB,TBS}
-    t_committed::Float64
-    t_switch::Float64
-    t_bak::Float64
-    nominal_trajectory::TN
-    tracked_nominal_trajectory::TTN
-    backup_trajectory::TB
-    backup_set::TBS
-end
-
-function scaled_time(model)
-    return abmtime(model) * model.dt
-end
 
 """
     get_control_input(committed_trajectory, t)
@@ -57,83 +43,6 @@ function get_position(trajectory::CompositeTrajectory, t::Float64)
         # return trajectory.backup_set[1:2] # Position at the backup set
         return trajectory.backup_trajectory[end][1:2]
     end
-end
-
-NEIGHBOR_TRAJECTORIES = []
-DELTA = 1.0
-function isValid(time::Float64, x::Float64, y::Float64)::Cint
-    global NEIGHBOR_TRAJECTORIES
-
-    # Check if the position (x, y) is valid at time t
-    for agent_trajectory in NEIGHBOR_TRAJECTORIES
-        pos = get_position(agent_trajectory, time)
-        dist_sq = (x - pos[1])^2 + (y - pos[2])^2
-
-        if dist_sq < DELTA^2
-            return Cint(0) # Invalid position
-        end
-    end
-
-    return Cint(1)
-end
-
-function make_valid_function(neighbor_trajectories::Vector{CompositeTrajectory}, model)
-    global NEIGHBOR_TRAJECTORIES = neighbor_trajectories
-    global DELTA = model.delta
-    return @cfunction(isValid, Cint, (Cdouble, Cdouble, Cdouble))
-end
-
-function agent_should_replan(agent, model)
-    ## An agent should replan if:
-    # 1. It wants to replan based on some heuristic (i.e. almost at switch time)
-    # 2. None of its neighbors have replanned in this iteration
-    # 3. Its backup set is not ontop of its goal position
-
-    # println("\t\tAgent $(agent.id) checking if it should replan at time $(scaled_time(model))")
-    # check if the agent even cares about replanning based on some heuristic
-    wants_to_replan = scaled_time(model) > agent.committed_trajectory.t_switch - model.num_timesteps_before_replan * model.dt
-    # println("Wnats to Replan: $(wants_to_replan) -- switch time is $(agent.committed_trajectory.t_switch)")
-    trajectory_ends_at_goal = norm(agent.committed_trajectory.backup_set[1:2] - agent.goal) <= model.Rgoal
-    # println("Trajectory ends at goal: $(trajectory_ends_at_goal)")
-    # println("My neighbor replanned: $(agent.my_neighbor_replanned)")
-    return wants_to_replan && !trajectory_ends_at_goal && !agent.my_neighbor_replanned
-end
-
-function try_to_join_network!(agent, model)
-    ## Rules to Join Network
-    # 1. The agent's 'join' position must not be within the collision radius of any other agent / in an obstacle
-    # 2. The agent must be able to "replan" -- no "neighbors" have replanned in this iteration
-    # 2. The agent must be able to construct a valid candidate trajectory that does not collide with
-    #    the committed trajectories of other agents within its 3R + delta communication radius
-
-    println("Agent $(agent.id) attempting to join the network at time $(scaled_time(model))")
-
-    for neighbor in nearby_agents(agent, model, model.delta, search=:exact)
-        if neighbor.in_network
-            # The agent is too close to another agent, it can not join the network
-            # println("\tAgent $(agent.id) can not join the network because it is too close to another agent!")
-            # println("\tDistance to neighbor $(neighbor.id): $(norm(agent.pos - neighbor.pos)) < $(model.delta)")
-            return false
-        end
-    end
-
-    if agent.my_neighbor_replanned
-        # The agent can not join the network because a neighbor has replanned
-        # println("\tAgent $(agent.id) can not join the network because a neighbor has replanned!")
-        return false
-    end
-
-    candidate_trajectory = construct_candidate(agent, model)
-    if candidate_trajectory === nothing || !validate_candidate(candidate_trajectory, agent, model)
-        # println("\tAgent $(agent.id) can not join the network because it could not construct a valid candidate trajectory!")
-        return false
-    end
-
-    # If we reach here, the agent can join the network!
-    update_committed_trajectory!(agent, model, candidate_trajectory)
-    agent.in_network = true
-    # println("\tAgent $(agent.id) successfully joined the network with a new committed trajectory!")
-    return true
 end
 
 
@@ -818,10 +727,11 @@ end
 
 function update_committed_trajectory!(agent, model, candidate_trajectory)
     # Tell all neighbors of this agent that this agent has replanned, and thus they should replan
-    for neighbor in nearby_agents(agent, model, model.Rcomm, search=:exact)
-        neighbor.my_neighbor_replanned = true
-    end
-
+    # for neighbor in nearby_agents(agent, model, model.Rcomm, search=:exact)
+    #     neighbor.my_neighbor_replanned = true
+    # end
+    # Set replanned flag so other agents know
+    agent.just_replanned = true
     # Set the agent's committed trajectory to the candidate trajectory
     agent.committed_trajectory = candidate_trajectory
 end

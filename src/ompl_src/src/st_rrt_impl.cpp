@@ -1,5 +1,6 @@
 #include "st_rrt_impl.hpp"
 
+#include <complex>
 #include <ompl/base/PlannerTerminationCondition.h>
 #include <ompl/base/ProblemDefinition.h>
 #include <ompl/base/ScopedState.h>
@@ -15,6 +16,7 @@
 #include <array>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -23,25 +25,46 @@
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
-// static std::shared_ptr<ompl::geometric::STRRTstar> planner;
-// static std::shared_ptr<ompl::base::RealVectorStateSpace> state_space;
-// static std::shared_ptr<ompl::geometric::SimpleSetup> simple_setup;
-// // static std::shared_ptr<ompl::base::SpaceInformation> space_info;
-// static ompl::base::SpaceInformationPtr space_info;
-
-static std::shared_ptr<og::STRRTstar> planner;
-static std::shared_ptr<og::SimpleSetup> simple_setup;
-static ob::SpaceInformationPtr space_info_ptr;
-
 static float V_MAX = 1.0;
 static float T_WEIGHT = 0.5;
 static int SPACE_DIM = 100;
+static float SAMPLING_RESOLUTION = 0.1;
 static float DELTA = 1.0; // inter-agent collision avoidance distance
+
+// TODO TEMP REMOVE
+// auto isStateValid(const ob::State *state) -> bool {
+//   // extract the space component of the state and cast it to what we expect
+//   const auto pos_x = state->as<ob::CompoundState>()
+//                          ->as<ob::RealVectorStateSpace::StateType>(0)
+//                          ->values[0];
+//   const auto pos_y = state->as<ob::CompoundState>()
+//                          ->as<ob::RealVectorStateSpace::StateType>(0)
+//                          ->values[1];
+
+//   // extract the time component of the state and cast it to what we expect
+//   const auto t = state->as<ob::CompoundState>()
+//                      ->as<ob::TimeStateSpace::StateType>(1)
+//                      ->position;
+
+//   // check validity of state defined by pos & t (e.g. check if constraints
+//   are
+//   // satisfied)...
+
+//   bool in_exclusion_zone =
+//       (pos_x > 20 && pos_x < 30 && pos_y > 20 && pos_y < 30);
+
+//   if (in_exclusion_zone) {
+//     return false;
+//   }
+
+//   // return a value that is always true
+//   return t >= 0 && pos_x < std::numeric_limits<double>::infinity() &&
+//          pos_y < std::numeric_limits<double>::infinity();
+// }
 
 class ValidityChecker : public ob::StateValidityChecker {
 public:
-  using ObstacleFunction = std::function<std::shared_ptr<ob::State>(float)>;
-  using JuliaIsValidFunction = std::function<bool(float, double, double)>;
+  using JuliaIsValidFunction = std::function<bool(double, double, double)>;
 
   ValidityChecker(const ob::SpaceInformationPtr &state_information,
                   JuliaIsValidFunction julia_is_valid)
@@ -60,47 +83,85 @@ private:
 
 public:
   auto isValid(const ob::State *state) const -> bool override {
-    // Downcast state to a SpaceTimeStateSpace
-    const auto *complete_state =
-        state->as<ob::SpaceTimeStateSpace::StateType>();
 
-    // Extract the spatial component (R^2 space)
     const auto *spatial_state =
-        complete_state->as<ob::RealVectorStateSpace::StateType>(0);
+        state->as<ob::CompoundState>()->as<ob::RealVectorStateSpace::StateType>(
+            0);
 
-    // Extract the time component
     const auto *time_state =
-        complete_state->as<ob::TimeStateSpace::StateType>(1);
+        state->as<ob::CompoundState>()->as<ob::TimeStateSpace::StateType>(1);
 
-    // Get time value
-    double time_value = time_state->position;
-
-    return this->is_valid_(time_value, spatial_state->values[0],
+    return this->is_valid_(time_state->position, spatial_state->values[0],
                            spatial_state->values[1]);
-
-    // // Check dynamic obstacle collisions
-    // for (const auto &obstacle_func : dynamic_obstacles_) {
-    //   auto obstacle_state_ptr =
-    //   obstacle_func(static_cast<float>(time_value)); if (obstacle_state_ptr
-    //   == nullptr) {
-    //     continue; // Skip if obstacle state is not available
-    //   }
-
-    //   // Cast obstacle state to RealVectorStateSpace
-    //   const auto *obstacle_2d_state =
-    //       obstacle_state_ptr->as<ob::RealVectorStateSpace::StateType>();
-
-    //   // Use the cached spatial state space's distance function
-    //   double distance =
-    //       spatial_state_space_->distance(spatial_state, obstacle_2d_state);
-
-    //   if (distance < DELTA) {
-    //     return false; // Collision detected
-    //   }
-    // }
-
-    // return true;
   }
+};
+
+class SpaceTimeMotionValidator : public ob::MotionValidator {
+public:
+  explicit SpaceTimeMotionValidator(const ob::SpaceInformationPtr &si)
+      : MotionValidator(si), vMax_(si_->getStateSpace()
+                                       .get()
+                                       ->as<ob::SpaceTimeStateSpace>()
+                                       ->getVMax()),
+        stateSpace_(si_->getStateSpace().get()) {};
+
+  auto checkMotion(const ob::State *s1, const ob::State *s2) const
+      -> bool override {
+    if (!si_->isValid(s2)) {
+      invalid_++;
+      // std::cout << "Invalid state encountered in motion validation.\n";
+      return false;
+    }
+
+    auto *space = stateSpace_->as<ob::SpaceTimeStateSpace>();
+    auto deltaPos = space->distanceSpace(s1, s2);
+    auto deltaT = s2->as<ob::CompoundState>()
+                      ->as<ob::TimeStateSpace::StateType>(1)
+                      ->position -
+                  s1->as<ob::CompoundState>()
+                      ->as<ob::TimeStateSpace::StateType>(1)
+                      ->position;
+
+    if (deltaT <= 0 || deltaPos / deltaT > vMax_) {
+      invalid_++;
+      // std::cout << "Invalid state encountered in motion validation.\n";
+      return false;
+    }
+
+    auto *intermediate_state = space->allocState();
+
+    // Interpolate points between to make sure the motion is valid
+    for (float intermediate_time = 0; intermediate_time < deltaT;
+         intermediate_time += SAMPLING_RESOLUTION) {
+      space->interpolate(s1, s2,
+                         intermediate_time +
+                             s1->as<ob::CompoundState>()
+                                 ->as<ob::TimeStateSpace::StateType>(1)
+                                 ->position,
+                         intermediate_state);
+
+      if (!si_->isValid(intermediate_state)) {
+        invalid_++;
+        // std::cout << "Invalid state encountered in motion validation.\n";
+        space->freeState(intermediate_state);
+        return false;
+      }
+    }
+
+    space->freeState(intermediate_state);
+
+    return true;
+  }
+
+  auto checkMotion(const ob::State *, const ob::State *,
+                   std::pair<ob::State *, double> &) const -> bool override {
+    throw ompl::Exception(
+        "checkMotion with pair not implemented for SpaceTimeMotionValidator");
+  }
+
+private:
+  double vMax_;                // Maximum velocity
+  ob::StateSpace *stateSpace_; // state space for distance calculations
 };
 
 void initialize_planner(int space_dim, float delta, float v_max,
@@ -112,53 +173,128 @@ void initialize_planner(int space_dim, float delta, float v_max,
   T_WEIGHT = t_weight;
 }
 
-void init_rrt_star_planner() {
-  // Initialize the 2D space information
-  auto state_space = std::make_shared<ob::RealVectorStateSpace>(2);
-
-  // Set Bounds for R^2
-  ob::RealVectorBounds bounds(2);
-  bounds.setLow(0);
-  bounds.setHigh(SPACE_DIM);
-  state_space->setBounds(bounds);
-
-  // Create the space-time state space
-  auto time_state_space =
-      std::make_shared<ob::SpaceTimeStateSpace>(state_space, V_MAX, T_WEIGHT);
-
-  simple_setup = std::make_shared<og::SimpleSetup>(state_space);
-
-  planner = std::make_shared<og::STRRTstar>(space_info_ptr);
-}
-
-auto plan_strrt(
+auto print_function_call(
     const std::array<double, 3> &current_state,
     const std::array<double, 2> &goal_state,
-    const std::function<bool(double, double, double)> &is_valid_julia)
+    const std::function<bool(double, double, double)> &is_valid) {
+  std::cout << "Function call with current_state: [" << current_state[0] << ", "
+            << current_state[1] << ", " << current_state[2]
+            << "] and goal_state: [" << goal_state[0] << ", " << goal_state[1]
+            << "]\n";
+}
+
+auto plan_strrt(const std::array<double, 3> &current_state,
+                const std::array<double, 2> &goal_state,
+                const std::function<bool(double, double, double)> &is_valid)
     -> std::optional<std::vector<std::array<double, 3>>> {
-  // Initialize the 2D spatial state space
-  auto spatial_state_space = std::make_shared<ob::RealVectorStateSpace>(2);
+
+  // print_function_call(current_state, goal_state, is_valid);
+
+  auto vector_space(std::make_shared<ob::RealVectorStateSpace>(2));
+  auto space = std::make_shared<ob::SpaceTimeStateSpace>(vector_space, V_MAX);
 
   // Set bounds for R^2
   ob::RealVectorBounds spatial_bounds(2);
   spatial_bounds.setLow(0);
   spatial_bounds.setHigh(SPACE_DIM);
-  spatial_state_space->setBounds(spatial_bounds);
+  vector_space->setBounds(spatial_bounds);
 
-  // Create the space-time state space
-  auto space_time_state_space = std::make_shared<ob::SpaceTimeStateSpace>(
-      spatial_state_space, V_MAX, T_WEIGHT);
+  // Set time bounds for the space-time state space
+  space->setTimeBounds(current_state[2], current_state[2] + (2.0 * SPACE_DIM));
 
-  // Create space information
-  auto space_info =
-      std::make_shared<ob::SpaceInformation>(space_time_state_space);
+  // Create the space information class
+  ob::SpaceInformationPtr space_info =
+      std::make_shared<ob::SpaceInformation>(space);
 
   // Create and set the validity checker with dynamic obstacles
   auto validity_checker =
-      std::make_shared<ValidityChecker>(space_info, is_valid_julia);
-  space_info->setStateValidityChecker(validity_checker);
-  space_info->setup();
+      std::make_shared<ValidityChecker>(space_info, is_valid);
 
+  auto motion_validator =
+      std::make_shared<SpaceTimeMotionValidator>(space_info);
+
+  space_info->setStateValidityChecker(validity_checker);
+  space_info->setMotionValidator(motion_validator);
+
+  // Create a simple-setup
+  og::SimpleSetup simple_setup(space_info);
+
+  ob::ScopedState<> start(space);
+  start[0] = current_state[0]; // x
+  start[1] = current_state[1]; // y
+  start[2] = current_state[2]; // t
+
+  ob::ScopedState<> goal(space);
+  goal[0] = goal_state[0]; // x
+  goal[1] = goal_state[1]; // y
+
+  // Before we begin, verify that the start and goal states are valid
+  // if (!space_info->isValid(start.get()) || !space_info->isValid(goal.get()))
+  // {
+  //   std::cout << "Start or goal state is invalid.\n";
+  //   return std::nullopt;
+  // }
+
+  simple_setup.setStartAndGoalStates(start, goal);
+
+  // Create the planner object
+  auto strrt_star = std::make_shared<og::STRRTstar>(space_info);
+
+  // Set the range for the planner
+  // strrt_star->setRange(V_MAX);
+  strrt_star->setRange(std::max(
+      std::min(5.0, 0.1 * std::sqrt(((goal_state[0] - current_state[0]) *
+                                     (goal_state[0] - current_state[0])) +
+                                    ((goal_state[1] - current_state[1]) *
+                                     (goal_state[1] - current_state[1])))),
+      static_cast<double>(V_MAX)));
+
+  // set the planner for the problem
+  simple_setup.setPlanner(ob::PlannerPtr(strrt_star));
+
+  auto termination_condition = ob::plannerOrTerminationCondition(
+      ob::timedPlannerTerminationCondition(2.00), // 5 second timeout
+      ob::CostConvergenceTerminationCondition(
+          simple_setup.getProblemDefinition()));
+
+  // auto termination_condition = ob::timedPlannerTerminationCondition(1.0);
+
+  std::cout << "Starting planning...\n";
+  ob::PlannerStatus solved = simple_setup.solve(termination_condition);
+
+  if (!solved || solved == ob::PlannerStatus::TIMEOUT) {
+    std::cout << "Planner failed to find a solution.\n";
+    std::cout << "Planner status: " << solved.asString() << "\n";
+    return std::nullopt;
+  }
+
+  std::cout << "Planner found a solution.\n";
+
+  // Extract waypoints from the solution path
+  const auto &path = simple_setup.getSolutionPath();
+  std::vector<std::array<double, 3>> waypoints;
+
+  for (size_t i = 0; i < path.getStateCount(); ++i) {
+    const auto *state = path.getState(i);
+    const auto *spatial_state =
+        state->as<ob::CompoundState>()->as<ob::RealVectorStateSpace::StateType>(
+            0);
+    const auto *time_state =
+        state->as<ob::CompoundState>()->as<ob::TimeStateSpace::StateType>(1);
+
+    std::array<double, 3> waypoint = {
+        spatial_state->values[0], // x
+        spatial_state->values[1], // y
+        time_state->position      // t
+    };
+    waypoints.push_back(waypoint);
+  }
+
+  return waypoints;
+  // std::vector<std::array<double, 3>> waypoints;
+  // return waypoints; // For now
+
+  /*
   // Create the problem definition
   auto problem_def = std::make_shared<ob::ProblemDefinition>(space_info);
 
@@ -212,14 +348,42 @@ auto plan_strrt(
   std::cout << "Optimal range: " << optimal_range << '\n';
 
   strrt_planner->setRange(optimal_range);
-  strrt_planner->setup();
+
+  // Verify setup before solving
+  try {
+    strrt_planner->setup();
+  } catch (const std::exception &e) {
+    std::cerr << "Planner setup failed: " << e.what() << '\n';
+    return std::nullopt;
+  }
+
+  // Verify space info is properly set up
+  if (!space_info->isSetup()) {
+    std::cerr << "SpaceInformation not properly set up\n";
+    return std::nullopt;
+  }
+
+  // Verify problem definition has start and goal states
+  if (problem_def->getStartStateCount() == 0) {
+    std::cerr << "No start states defined\n";
+    return std::nullopt;
+  }
+
+  if (!problem_def->getGoal()) {
+    std::cerr << "No goal defined\n";
+    return std::nullopt;
+  }
+
+  std::cout << "Starting planning...\n";
 
   // Solve the planning problem with time limit
   // Combine a time limit and an optimality improvement threshold for early
   // termination
-  auto termination_condition = ob::plannerOrTerminationCondition(
-      ob::timedPlannerTerminationCondition(5.0), // 5 second timeout
-      ob::CostConvergenceTerminationCondition(problem_def));
+  // auto termination_condition = ob::plannerOrTerminationCondition(
+  //     ob::timedPlannerTerminationCondition(5.0), // 5 second timeout
+  //     ob::CostConvergenceTerminationCondition(problem_def));
+
+  auto termination_condition = ob::timedPlannerTerminationCondition(5.0);
 
   ob::PlannerStatus status = strrt_planner->solve(termination_condition);
 
@@ -238,14 +402,32 @@ auto plan_strrt(
 
       for (size_t i = 0; i < path_geometric->getStateCount(); ++i) {
         const auto *state = path_geometric->getState(i);
+        if (!state) {
+          std::cerr << "Error: Null state in path at index " << i << "\n";
+          continue; // Skip this waypoint
+        }
+
         const auto *complete_state =
             state->as<ob::SpaceTimeStateSpace::StateType>();
+        if (!complete_state) {
+          std::cerr << "Error: Invalid state cast at index " << i << "\n";
+          continue; // Skip this waypoint
+        }
 
         // Extract spatial and time components
         const auto *spatial_state =
             complete_state->as<ob::RealVectorStateSpace::StateType>(0);
+        if (!spatial_state || !spatial_state->values) {
+          std::cerr << "Error: Invalid spatial state at index " << i << "\n";
+          continue; // Skip this waypoint
+        }
+
         const auto *time_state =
             complete_state->as<ob::TimeStateSpace::StateType>(1);
+        if (!time_state) {
+          std::cerr << "Error: Invalid time state at index " << i << "\n";
+          continue; // Skip this waypoint
+        }
 
         std::array<double, 3> waypoint = {
             spatial_state->values[0], // x
@@ -262,4 +444,35 @@ auto plan_strrt(
 
   // Return empty optional if planning failed or no path found
   return std::nullopt;
+  */
+}
+
+auto geometric_path_to_serialized(const og::PathGeometric &path,
+                                  int max_path_length, double *path_out,
+                                  int *actual_path_length) -> void {
+
+  size_t num_states = path.getStateCount();
+
+  if (num_states > static_cast<size_t>(max_path_length)) {
+    *actual_path_length = 0;
+    std::cout << "Error: Not enough space in output array for path.\n";
+    return;
+  }
+
+  // Write the path length
+  *actual_path_length = static_cast<int>(num_states);
+
+  // Copy path data to output array
+  // Format: [x1, y1, t1, ...]
+  for (size_t i = 0; i < num_states; i++) {
+    const auto *waypoint = path.getState(i);
+    const auto *spatial = waypoint->as<ob::CompoundState>()
+                              ->as<ob::RealVectorStateSpace::StateType>(0);
+    const auto *time_state =
+        waypoint->as<ob::CompoundState>()->as<ob::TimeStateSpace::StateType>(1);
+
+    path_out[(i * 3) + 0] = spatial->values[0];   // x
+    path_out[(i * 3) + 1] = spatial->values[1];   // y
+    path_out[(i * 3) + 2] = time_state->position; // t
+  }
 }

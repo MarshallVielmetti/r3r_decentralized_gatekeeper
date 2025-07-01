@@ -1,6 +1,7 @@
 module double_integrators_2d
 
 using ..Gatekeeper2D
+using ..R3RCommon
 
 using Agents
 using Agents.Pathfinding
@@ -12,7 +13,7 @@ using StaticArrays, Random, LinearAlgebra
 
 export init_model, plot_agent, plot_model_extras!
 
-@agent struct DoubleIntegrator2D(ContinuousAgent{2,Float64})
+@agent struct GatekeeperAgent2D(ContinuousAgent{2,Float64})
     # has pos and vel built into the agent type
     in_network::Bool # Flag to indicate whether or not the agent has joined the network yet
     failed_last_replan::Bool # Flag to indicate if the agent failed to replan at last attempt
@@ -22,87 +23,9 @@ export init_model, plot_agent, plot_model_extras!
 end
 
 @kwdef mutable struct DoubleIntegratorParameters
-    Rcomm::Float64 = 16.0 # Communication Radius 
-    Rplan::Float64 = 5.0 # Planning Radius
-    delta::Float64 = 1.0 # Inter-agent collision radius
-    Rgoal::Float64 = 0.5 # Goal pose radius to prevent weird numerical instabilities
     v_max::Float64 = 1.0 # maximum velocity of an agent
     u_max::Float64 = 1.0 # maximum control input magnitude of an agent
-    dt::Float64 = 0.01 # Simulation Time Step
-    num_timesteps_before_replan::Int = 5 # Number of timesteps before agent reaches its switch time before replanning
-end
-
-"""
-    model_step!(model)
-Performs a single step of the model simulation.
-"""
-function model_step!(model)
-    println("\n###################################")
-    println("Model step at time $(scaled_time(model))")
-
-    # Clear Replanning Flags
-    for agent in allagents(model)
-        agent.my_neighbor_replanned = false
-    end
-
-    return
-end
-
-
-"""
-    agent_step!(agent, model)
-Performs a single step of the agent simulation.
-"""
-function agent_step!(agent, model)
-    println("Agent $(agent.id) step at time $(scaled_time(model))")
-
-    if !agent.in_network
-        # if the agent is not in the network, it should try to join
-        if try_to_join_network!(agent, model)
-            println("\tAgent $(agent.id) has joined the network successfully!")
-            propagate_along_trajectory!(agent, model)
-        end
-        return
-    end
-
-    # nearby_agents = nearby_agents(model, agent, model.Rcomm)
-
-    ## Check if agent is experiencing a collision (only consider in-network agents)
-    # for neighbor in Iterators.filter(nearby_agents(model, agent, model.delta), n -> n.in_network)
-    # An agent is inside the collision radius of this agent
-    # nearby_set = nearby_agents(model, agent, model.delta)
-
-    #     println("\tAgent $(agent.id) and agent $(neighbor.id) are too close!")
-    #     println("\tThe distance between them is $(norm(agent.pos - neighbor.pos))")
-    # end
-
-    ## Check if the agent has reached its goal
-    if norm(agent.pos - agent.goal) <= model.Rgoal
-        # println("\tAgent $(agent.id) has reached its goal at $(agent.goal)")
-        # Remove the agent from the model
-        remove_agent!(agent, model) # TODO -- validate that calling this function here is safe
-        return
-    end
-
-    ## CHECK REPLANNING
-    # println("\tAgent $(agent.id) checking if it should replan...")
-    if agent_should_replan(agent, model)
-        # println("\tAgent $(agent.id) attempting to replan...")
-        # Update the agent's composite trajectory
-        candidate_trajectory = construct_candidate(agent, model)
-        if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
-            # If the candidate trajectory is valid, set it as the agent's committed trajectory
-            # println("\tAgent $(agent.id) successfully constructed new committed trajectory!")
-            update_committed_trajectory!(agent, model, candidate_trajectory)
-            agent.failed_last_replan = false
-        else
-            # println("\tAgent $(agent.id) could not find a valid trajectory to commit.")
-            agent.failed_last_replan = true
-        end
-    end
-
-    ## Propagate Agent Along Committed Trajectory
-    propagate_along_trajectory!(agent, model)
+    num_timesteps_before_replan::Int = 15 # Number of timesteps before agent reaches its switch time before replanning
 end
 
 
@@ -134,7 +57,7 @@ function init_model(;
         dt=dt
     )
 
-    model = StandardABM(DoubleIntegrator2D, space; (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
+    model = StandardABM(GatekeeperAgent2D, space; (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
 
     for i in 1:n_agents
         # while there are no obstacles:
@@ -152,7 +75,7 @@ function init_model(;
         # pos = rand(Float64, SVector{2,Float64}) .* @SVector [space.dims[1], space.dims[2]]
         # goal_pos = rand(Float64, SVector{2,Float64}) .* @SVector [space.dims[1], space.dims[2]]
 
-        agent = (DoubleIntegrator2D)(model, pos, v0, false, false, false, goal_pos, nothing)
+        agent = (GatekeeperAgent2D)(model, pos, v0, false, false, false, goal_pos, nothing)
 
         add_agent_own_pos!(agent, model)
     end
