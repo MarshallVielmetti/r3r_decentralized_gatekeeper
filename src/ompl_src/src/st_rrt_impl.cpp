@@ -1,5 +1,6 @@
 #include "st_rrt_impl.hpp"
 
+#include <algorithm>
 #include <complex>
 #include <ompl/base/PlannerTerminationCondition.h>
 #include <ompl/base/ProblemDefinition.h>
@@ -199,8 +200,15 @@ auto plan_strrt(const std::array<double, 3> &current_state,
   spatial_bounds.setHigh(SPACE_DIM);
   vector_space->setBounds(spatial_bounds);
 
+  double distance_between_states =
+      ((goal_state[0] - current_state[0]) *
+       (goal_state[0] - current_state[0])) +
+      ((goal_state[1] - current_state[1]) * (goal_state[1] - current_state[1]));
+
   // Set time bounds for the space-time state space
-  space->setTimeBounds(current_state[2], current_state[2] + (2.0 * SPACE_DIM));
+  space->setTimeBounds(current_state[2],
+                       current_state[2] +
+                           std::max(5.0, (2.0 * distance_between_states)));
 
   // Create the space information class
   ob::SpaceInformationPtr space_info =
@@ -242,12 +250,8 @@ auto plan_strrt(const std::array<double, 3> &current_state,
 
   // Set the range for the planner
   // strrt_star->setRange(V_MAX);
-  strrt_star->setRange(std::max(
-      std::min(5.0, 0.1 * std::sqrt(((goal_state[0] - current_state[0]) *
-                                     (goal_state[0] - current_state[0])) +
-                                    ((goal_state[1] - current_state[1]) *
-                                     (goal_state[1] - current_state[1])))),
-      static_cast<double>(V_MAX)));
+
+  strrt_star->setRange(std::clamp(0.1 * distance_between_states, 0.1, 5.0));
 
   // set the planner for the problem
   simple_setup.setPlanner(ob::PlannerPtr(strrt_star));
@@ -255,7 +259,7 @@ auto plan_strrt(const std::array<double, 3> &current_state,
   auto termination_condition = ob::plannerOrTerminationCondition(
       ob::timedPlannerTerminationCondition(2.00), // 5 second timeout
       ob::CostConvergenceTerminationCondition(
-          simple_setup.getProblemDefinition()));
+          simple_setup.getProblemDefinition(), 10, 0.05));
 
   // auto termination_condition = ob::timedPlannerTerminationCondition(1.0);
 

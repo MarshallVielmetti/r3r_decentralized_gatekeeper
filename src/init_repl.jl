@@ -2,6 +2,7 @@ using Pkg;
 Pkg.activate("..")
 
 using Agents
+using CSV
 
 include("r3r.jl")
 using .r3r
@@ -27,7 +28,7 @@ function circle_model(n_agents, circle_radius=30.0)
 
     return r3r.init_2d_path_tracker_problem(
         n_agents=n_agents,
-        delta=4.0,
+        delta=2.0,
         Rcomm=16.0,
         Rgoal=0.5,
         dt=0.1,

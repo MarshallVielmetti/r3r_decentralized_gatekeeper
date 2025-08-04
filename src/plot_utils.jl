@@ -37,12 +37,17 @@ function animate_df(agent_df, model)
     # Create circles around agents (radius = 1.0)
     circle_points = 50
     RADIUS = model.delta
+
     θ = range(0, 2π, length=circle_points)
     unit_circle_x = RADIUS .* cos.(θ)
     unit_circle_y = RADIUS .* sin.(θ)
 
+    comm_circle_x = 16. .* cos.(θ)
+    comm_circle_y = 16. .* sin.(θ)
+
     # Create observables for circle positions
     agent_circles = [Observable([Point2f(x, y) for (x, y) in zip(unit_circle_x, unit_circle_y)]) for _ in 1:n_agents]
+    comm_circles = [Observable([Point2f(x, y) for (x, y) in zip(unit_circle_x, unit_circle_y)]) for _ in 1:n_agents]
 
     # Plot trajectories, current positions, and circles for all agents
     for i in 1:n_agents
@@ -56,6 +61,9 @@ function animate_df(agent_df, model)
 
         # Plot circle around agent
         lines!(ax, agent_circles[i], color=agent_color, linewidth=1, alpha=0.5, linestyle=:dash)
+
+        # Plot circle around agent
+        lines!(ax, comm_circles[i], color=agent_color, linewidth=1, alpha=0.5, linestyle=:dash)
     end
 
     axislegend(ax, position=:lt)
@@ -88,6 +96,8 @@ function animate_df(agent_df, model)
 
                         # Update circle position around agent
                         agent_circles[i][] = [Point2f(agent_center[1] + x, agent_center[2] + y) for (x, y) in zip(unit_circle_x, unit_circle_y)]
+
+                        comm_circles[i][] = [Point2f(agent_center[1] + x, agent_center[2] + y) for (x, y) in zip(comm_circle_x, comm_circle_y)]
                     end
                 else
                     # Hide agent by setting empty data
