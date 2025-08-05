@@ -89,12 +89,12 @@ Returns the backup_set and time t_bak.
 function choose_ideal_backup_set(agent::PathFollower2D, model, nominal_trajectory)
     # Find the first point in the nominal trajectory that is outside the planning radius and not been visited yet
     current_time = scaled_time(model)
-    exit_idx = findfirst(x -> x[3] >= current_time && squared_dist(x[1:2], agent.pos) > model.Rplan^2, eachcol(nominal_trajectory))
+    exit_idx = findfirst(x -> x[3] >= current_time && squared_dist(x[SOneTo(2)], agent.pos) > model.Rplan^2, eachcol(nominal_trajectory))
 
     # If the nominal is entirely within the planning radius,
     # return the last point on the nominal
     if (exit_idx === nothing)
-        return nominal_trajectory[1:2, end], nominal_trajectory[3, end]
+        return nominal_trajectory[SOneTo(2), end], nominal_trajectory[3, end]
     end
 
     if exit_idx == 1
@@ -105,8 +105,8 @@ function choose_ideal_backup_set(agent::PathFollower2D, model, nominal_trajector
 
     # If not, somewhere between exit_idx and exit_idx - 1 is the last point in the planning radius
     intersection_point = compute_intersection_point(
-        nominal_trajectory[1:2, exit_idx-1],
-        nominal_trajectory[1:2, exit_idx],
+        nominal_trajectory[SOneTo(2), exit_idx-1],
+        nominal_trajectory[SOneTo(2), exit_idx],
         agent.pos,
         model.Rplan
     )
@@ -116,8 +116,8 @@ function choose_ideal_backup_set(agent::PathFollower2D, model, nominal_trajector
         return nothing
     end
 
-    intersection_time = nominal_trajectory[:, exit_idx-1][3] +
-                        norm(nominal_trajectory[1:2, exit_idx-1] - intersection_point)
+    intersection_time = nominal_trajectory[3, exit_idx-1] +
+                        norm(nominal_trajectory[SOneTo(2), exit_idx-1] - intersection_point)
 
     # TODO REMOVE
     @assert isa(intersection_point, AbstractVector) "Backup set must be an AbstractVector, got $(typeof(backup_set))"
@@ -140,7 +140,7 @@ function validate_backup_set(agent::PathFollower2D, model, backup_set, t_bak)
 
     for neighbor in current_neighbors
         # If backup sets overlap, no good.
-        if squared_dist(backup_set[1:2], neighbor.committed_trajectory.backup_set) < model.delta^2
+        if squared_dist(backup_set[SOneTo(2)], neighbor.committed_trajectory.backup_set) < model.delta^2
             return false
         end
 
@@ -162,9 +162,9 @@ function validate_backup_set(agent::PathFollower2D, model, backup_set, t_bak)
         length_of_neighbor_nominal = size(neighbor.committed_trajectory.nominal_trajectory, 2)
         for i in idx:(length_of_neighbor_nominal-1)
             if compute_intersection_point(
-                neighbor.committed_trajectory.nominal_trajectory[1:2, i],
-                neighbor.committed_trajectory.nominal_trajectory[1:2, i+1],
-                backup_set[1:2],
+                neighbor.committed_trajectory.nominal_trajectory[SOneTo(2), i],
+                neighbor.committed_trajectory.nominal_trajectory[SOneTo(2), i+1],
+                backup_set[SOneTo(2)],
                 model.delta
             ) !== nothing
                 return false
@@ -177,7 +177,7 @@ end
 
 function Gatekeeper.get_position(trajectory::PathFollowerCompositeTrajectory, t::Float64)
     if t >= trajectory.t_bak
-        return trajectory.backup_set[1:2]
+        return trajectory.backup_set[SOneTo(2)]
     else
         # Interpolate along the nominal trajectory
         idx = findlast(x -> x[3] <= t, eachcol(trajectory.nominal_trajectory))
@@ -190,14 +190,14 @@ function Gatekeeper.get_position(trajectory::PathFollowerCompositeTrajectory, t:
             # @show "start time:  $(trajectory.nominal_trajectory[3, 1])"
             # @show idx
             # @show trajectory.nominal_trajectory
-            return trajectory.nominal_trajectory[1:2, end]  # Return the last point if no valid idx found
+            return trajectory.nominal_trajectory[SOneTo(2), end]  # Return the last point if no valid idx found
         end
 
         p1 = trajectory.nominal_trajectory[:, idx]
         p2 = trajectory.nominal_trajectory[:, idx+1]
 
         t_ratio = (t - p1[3]) / (p2[3] - p1[3])
-        return p1[1:2] + t_ratio * (p2[1:2] - p1[1:2])
+        return p1[SOneTo(2)] + t_ratio * (p2[SOneTo(2)] - p1[SOneTo(2)])
     end
 end
 
