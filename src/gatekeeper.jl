@@ -6,7 +6,6 @@ Shared functionality that works independent of the specific agent type.
 module Gatekeeper
 
 using ..R3RCommon
-using ..STRRT_STAR
 
 using Agents, Random, StaticArrays
 
@@ -36,8 +35,8 @@ function init_model(
     Rgoal::Float64=0.5,
     dt::Float64=0.1,
     rng=Random.MersenneTwister(1234),
-    dims::Tuple{Int,Int}=(100, 100) # Dimensions of the
-)
+    dims::Tuple{F,F}=(100, 100) # Dimensions of the
+) where {F<:Real}
     println("Initializing the model!")
     Rplan = (Rcomm - delta) / 3.0
 
@@ -49,9 +48,6 @@ function init_model(
         Rgoal=Rgoal,
         dt=dt
     )
-
-    STRRT_STAR.init_planner(100, Float32(delta), Float32(1.0), Float32(1.0))
-
 
     # Create the model object
     model = StandardABM(agent_type, ContinuousSpace(dims; periodic=false); (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
