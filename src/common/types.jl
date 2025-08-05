@@ -57,12 +57,13 @@ end
 Notes:
 It is in R3 because the state is x,y,θ
 """
-@Agent struct DubinsAgent2D(ContinuousAgent{3,Float64})
+@agent struct DubinsAgent2D(ContinuousAgent{2,Float64})
     # has pos and vel built into the agent type
+    theta::Float64 # Heading angle -- not included in the state vector but used for dynamics
     in_network::Bool # Flag to indicate whether or not the agent has joined the network yet
     failed_last_replan::Bool # Flag to indicate if the agent failed to replan at last attempt
     just_replanned::Bool # Flag to indicate if an agent's neighbor has replanned at the current time step
-    goal::SVector{3,Float64} # Goal Position
+    goal::SVector{3,Float64} # Goal Position -- 3D Vector x,y,θ
     committed_trajectory::Union{Nothing,PathFollowerCompositeTrajectory{TN,TBS}} where {TN,TBS} # Composite trajectory for the agent or nothing
     turning_radius::Float64 # Minimum turning radius for Dubins dynamics
 end

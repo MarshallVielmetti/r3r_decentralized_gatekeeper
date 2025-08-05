@@ -3,7 +3,7 @@ module DubinsAgent2DModel
 using ..R3RCommon
 using ..Gatekeeper
 
-using DynamicRRT
+using DynamicRRT, Dubins
 using StaticArrays, Random, Agents, LinearAlgebra
 
 export construct_candidate, get_position
@@ -55,7 +55,7 @@ function Gatekeeper.construct_candidate(agent::DubinsAgent2D, model)
     return candidate_trajectory
 end
 
-function construct_new_nominal(agent::DubinsAgent2D, model)::Union{Nothing,Vector{Tuple{DubinsPath,F}}} where {F<:Real}
+function construct_new_nominal(agent::DubinsAgent2D, model)::Union{Nothing,Vector{Tuple{DubinsPath,F<:Real}}}
     sol = plan_nominal_with_rrt(agent, model)
 
     if sol.status != RRTStar.SolutionStatus.GoalReached
@@ -67,7 +67,8 @@ function construct_new_nominal(agent::DubinsAgent2D, model)::Union{Nothing,Vecto
     for i in SOneTo(length(sol.best_path) - 1)
         errcode, path = dubins_shortest_path(
             sol.best_path[i],
-            sol.best_path[i+1]
+            sol.best_path[i+1],
+            agent.turning_radius
         )
 
         if errcode != EDUBOK
@@ -98,7 +99,7 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::DynamicRRT.RRTStarS
     neighbor_agent_trajectories::Vector{DubinsCompositeTrajectory} = [neighbor.committed_trajectory for neighbor in comms_radius(agent, model)]
     dynamic_obstacles = [
         DubinsDynamicPathRRT.DynamicCircleObstacle(
-            t -> Gatekeeper.get_position(traj, t)[1:2],
+            t -> Gatekeeper.get_position(traj, t)[SOneTo(2)],
             model.delta,
             (scaled_time(model), Inf)
         )
@@ -131,7 +132,7 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::DynamicRRT.RRTStarS
     return sol
 end
 
-function choose_ideal_backup_set(agent::DubinsAgent2D, model, nominal_trajectory)::Tuple{SVector{3,F},F} where {F<:Real}
+function choose_ideal_backup_set(agent::DubinsAgent2D, model, nominal_trajectory)::Tuple{SVector{3,F<:Real},F<:Real}
     # Find the first point in the nominal trajectory that is outside the planning radius and not been visited yet
     current_time = scaled_time(model)
 
@@ -169,7 +170,7 @@ function choose_ideal_backup_set(agent::DubinsAgent2D, model, nominal_trajectory
     return exit_point, exit_time
 end
 
-function compute_exit_point(agent::DubinsAgent2D, model, dubins_path::DubinsPath; sample_resolution::Float64=0.01)::Tuple{SVector{3,F},F} where {F<:Real}
+function compute_exit_point(agent::DubinsAgent2D, model, dubins_path::DubinsPath; sample_resolution::Float64=0.01)::Tuple{SVector{3,F<:Real},F<:Real}
     # Find the first time along the dubins path that is outside the planning radius
     path_len = dubins_path_length(dubins_path)
 
@@ -233,11 +234,11 @@ function validate_backup_set(agent::DubinsAgent2D, model, backup_set, t_bak; sam
     return true
 end
 
-function Gatekeeper.get_position(trajectory::DubinsCompositeTrajectory, t::Float64)::SVector{3,F} where {F<:Real}
+function Gatekeeper.get_position(trajectory::DubinsCompositeTrajectory, t::Float64)::SVector{3,F<:Real}
     # Handle backup set case
     # TODO parametric backup sets
     if t >= trajectory.t_bak
-        return trajectory.backup_set[1:2]
+        return trajectory.backup_set#[SOneTo(3)] # TODO Verify I am being consistent with 3D state
     end
 
     # Must be in nominal trajectory
@@ -257,7 +258,7 @@ function Gatekeeper.propagate_along_trajectory!(agent::DubinsAgent2D, model)
     new_position = get_position(agent.committed_trajectory, scaled_time(model))
 
     agent.theta = new_position[3] # Update the agent's orientation
-    move_agent!(agent, new_position[SOneTo(2)], model) # Update agent's xy position
+    move_agent!(agent, new_position[SOneTo(2)], model) # Update agent's xy posiiton
 end
 
 function init_dubins_agent_2d_problem(;
@@ -272,22 +273,28 @@ function init_dubins_agent_2d_problem(;
     goal_positions::Union{Nothing,Vector{SVector{2,Float64}}}=nothing ## Goal positions of agents
 )
     dims = (1.0, 1.0)
+
     dims_vector = @SVector [dims[1], dims[2]]
+    dims_min = @SVector [0.0, 0.0, -π]
+    dims_max = @SVector [dims[1], dims[2], π]
+
+    dims_diff = dims_max - dims_min
+
 
     Random.seed!(seed)
 
     if starting_positions === nothing
-        starting_positions = [SVector{2,Float64}(rand(2)) .* dims_vector for _ in 1:n_agents]
+        starting_positions = [SVector{3,Float64}(rand(3)) .* dims_diff + dims_min for _ in SOneTo(n_agents)]
     end
     if goal_positions === nothing
-        goal_positions = [SVector{2,Float64}(rand(2)) .* dims_vector for _ in 1:n_agents]
+        goal_positions = [SVector{3,Float64}(rand(3)) .* dims_diff + dims_min for _ in SOneTo(n_agents)]
     end
 
-    v0 = @SVector [0.0, 0.0] # Initial velocity of agents
+    v0 = @SVector [0.0, 0.0] # Initial velocity of agents -- not used in this at all so like (?)
 
     function add_agents!(model)
         for (starting_position, goal_position) in zip(starting_positions, goal_positions)
-            agent = DubinsAgent2D(model, starting_position, v0, false, false, false, goal_position, nothing, turning_radius)
+            agent = DubinsAgent2D(model, starting_position[SOneTo(2)], v0, starting_position[3], false, false, false, goal_position, nothing, turning_radius)
             add_agent_own_pos!(agent, model)
         end
     end
