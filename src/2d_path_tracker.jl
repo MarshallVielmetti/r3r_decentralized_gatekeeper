@@ -144,6 +144,7 @@ function validate_backup_set(agent::PathFollower2D, model, backup_set, t_bak)
             return false
         end
 
+        # TODO VALIDATE LOGIC???
         if neighbor.committed_trajectory.t_bak >= t_bak
             continue
         end

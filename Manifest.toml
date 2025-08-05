@@ -2,7 +2,7 @@
 
 julia_version = "1.11.4"
 manifest_format = "2.0"
-project_hash = "5730d5d7c463bc767366f142d095e7c9979ec4db"
+project_hash = "92e011e9ef29f943dd4884be2559f4eddf4b68ed"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e2478490447631aedba0823d4d7a80b2cc8cdb32"
@@ -627,6 +627,20 @@ version = "0.9.5"
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.6.0"
+
+[[deps.Dubins]]
+deps = ["Logging", "LoggingExtras", "StaticArrays"]
+git-tree-sha1 = "83aa82fbf0d74b94788e02de3359dd419767ed0a"
+uuid = "c4b27c1d-289f-5655-aa69-f096df7d9e2b"
+version = "1.2.0"
+
+[[deps.DynamicRRT]]
+deps = ["Dubins", "LinearAlgebra", "StaticArrays", "Test"]
+git-tree-sha1 = "341b40043f078310f5d260a4f576daec51e47d1a"
+repo-rev = "main"
+repo-url = "https://github.com/MarshallVielmetti/DynamicRRT.jl.git"
+uuid = "be312fe0-eb12-4688-a566-77474f18788e"
+version = "0.1.0"
 
 [[deps.EarCut_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2630,9 +2644,9 @@ weakdeps = ["OffsetArrays", "StaticArrays"]
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
-git-tree-sha1 = "0feb6b9031bd5c51f9072393eb5ab3efd31bf9e4"
+git-tree-sha1 = "cbea8a6bd7bed51b1619658dec70035e07b8502f"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.9.13"
+version = "1.9.14"
 weakdeps = ["ChainRulesCore", "Statistics"]
 
     [deps.StaticArrays.extensions]

@@ -4,8 +4,8 @@ include("types.jl")
 include("utils.jl")
 
 # Trajectory Types
-export AbstractCompositeTrajectory, CompositeTrajectory, PathFollowerCompositeTrajectory
-export DoubleIntegrator2D, PathFollower2D
+export AbstractCompositeTrajectory, CompositeTrajectory, PathFollowerCompositeTrajectory, DubinsCompositeTrajectory
+export DoubleIntegrator2D, PathFollower2D, DubinsAgent2D
 
 # Agents.jl Utilities
 export scaled_time, exact_nearby_agents, comms_radius, collision_radius, in_collision
