@@ -64,6 +64,6 @@ It is in R3 because the state is x,y,θ
     failed_last_replan::Bool # Flag to indicate if the agent failed to replan at last attempt
     just_replanned::Bool # Flag to indicate if an agent's neighbor has replanned at the current time step
     goal::SVector{3,Float64} # Goal Position -- 3D Vector x,y,θ
-    committed_trajectory::Union{Nothing,PathFollowerCompositeTrajectory{TN,TBS}} where {TN,TBS} # Composite trajectory for the agent or nothing
+    committed_trajectory::Union{Nothing,DubinsCompositeTrajectory{TN,TBS}} where {TN,TBS} # Composite trajectory for the agent or nothing
     turning_radius::Float64 # Minimum turning radius for Dubins dynamics
 end

@@ -35,7 +35,7 @@ function init_model(;
     n_agents::Int=10, ## Number of agents
     delta::Float64=1.0, ## Inter-agent collision radius
     Rcomm::Float64=16.0, ## Planning Radius
-    Rgoal::Float64=0.5, ## Goal Radius 
+    Rgoal::Float64=0.01, ## Goal Radius 
     dt::Float64=0.1, ## Time Step
     seed::Int=1234, ## Random Seed
     agent_starting_positions::Union{Nothing,Vector{SVector{2,Float64}}}=nothing, ## Starting positions of agents
