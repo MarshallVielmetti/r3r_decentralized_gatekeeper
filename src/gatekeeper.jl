@@ -37,7 +37,8 @@ function init_model(
     Rgoal::Float64=0.01,
     dt::Float64=0.1,
     rng=Random.MersenneTwister(1234),
-    dims::Tuple{F,F}=(100, 100) # Dimensions of the
+    dims::Tuple{F,F}=(100, 100), # Dimensions of the scenario,
+    occupancy_grid::Union{Nothing,OccupancyGrid}=nothing
 ) where {F<:Real}
     println("Initializing the model!")
     Rplan = (Rcomm - delta) / 3.0
@@ -49,7 +50,8 @@ function init_model(
         delta=delta,
         Rgoal=Rgoal,
         dt=dt,
-        dims=dims
+        dims=dims,
+        occupancy_grid=occupancy_grid
     )
 
     # Create the model object
