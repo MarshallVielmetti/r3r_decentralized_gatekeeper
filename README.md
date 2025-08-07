@@ -4,6 +4,12 @@ This project is a simulation framework written in Julia for decentralized, multi
 
 The core of the pathfinding logic leverages a custom Julia implementation of the DynamicRRT* algorithm.
 
+## Example Simulations
+
+| 4 Agents in a Circle | 60 Agents in a Circle |
+|-----------------------|-----------------------|
+| <img src="outputs/4_agent_circle.gif" alt="4 Agent Circle" width="400px"> | <img src="outputs/60_agent_circle.gif" alt="60 Agent Circle" width="400px"> |
+
 ## Key Features
 
 *   **Decentralized Coordination:** No central controller is required. Agents coordinate with their local neighbors.
@@ -26,6 +32,7 @@ The "Gatekeeper" algorithm is built on a few key ideas:
 ## Custom Julia Packages
 Dubins.jl: https://github.com/dev10110/Dubins.jl.git
 DynamicRRT.jl: https://github.com/MarshallVielmetti/DynamicRRT.jl.git
+OccupancyGrids.jl: https://github.com/MarshallVielmetti/OccupancyGrids.jl.git
 
 ## Project Structure
 
