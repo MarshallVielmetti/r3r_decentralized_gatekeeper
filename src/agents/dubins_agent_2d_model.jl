@@ -63,7 +63,15 @@ function construct_new_nominal(agent::DubinsAgent2D, model)::Union{Nothing,Vecto
 
     if sol.status != RRTStar.GoalReachable
         @error "RRT* failed to find a solution for agent $(agent.id). Status: $(sol.status)"
-        return nothing # Failed to find a solution
+        return nothing
+
+        # Fallback: Direct Dubins path to goal
+        # errcode, path = dubins_shortest_path(
+        #     SVector{3,Float64}(agent.pos[1], agent.pos[2], agent.theta),
+        #     agent.goal,
+        #     agent.turning_radius
+        # )
+        # return [(path, scaled_time(model))]
     end
 
     if isnothing(sol.best_path) || length(sol.best_path) < 2
@@ -94,9 +102,13 @@ end
 
 function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolution
     # println("[TRACE] Entered plan_nominal_with_rrt")
-    dims = @SVector [1.0, 1.0] # TODO Actually adapt but its being a pos
-    domain_min = @SVector [0.0, 0.0, -π]
-    domain_max = @SVector [dims[1], dims[2], π]
+    # dims = @SVector [0.98, 0.98] # TODO Actually adapt but its being a pos
+
+    dims = model.dims
+    padding = @SVector [0.1, 0.1, 0.0]
+
+    domain_min = @SVector [0.0 + padding[1], 0.0 + padding[2], -π]
+    domain_max = @SVector [dims[1] - padding[1], dims[2] - padding[2], π]
     rrt_domain = (domain_min, domain_max)
 
     # Convert the obstacles to the format required by the RRT* planner
@@ -153,7 +165,7 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
         max_iterations=50,
         max_time_seconds=1.0,
         do_rewire=true,
-        early_exit=false, # TODO make better exit metric
+        early_exit=true, # TODO make better exit metric
         goal_bias=0.1
     )
 
@@ -338,12 +350,13 @@ function init_dubins_agent_2d_problem(;
     Rgoal::Float64=0.01, ## Goal Radius 
     dt::Float64=0.005, ## Time Step
     seed::Int=1234, ## Random Seed
+    dim::Float64=1.0, ## Dimension of the world
     turning_radius::Float64=0.05, ## Minimum turning radius for Dubins dynamics,
     starting_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing, ## Starting positions of agents
     goal_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing ## Goal positions of agents
 )
     # println("[TRACE] Entered init_dubins_agent_2d_problem")
-    dims = (1.0, 1.0)
+    dims = (dim, dim)
 
     dims_min = @SVector [0.0, 0.0, -π]
     dims_max = @SVector [dims[1], dims[2], π]
@@ -369,7 +382,7 @@ function init_dubins_agent_2d_problem(;
 
     function add_agents!(model)
         for (starting_position, goal_position) in zip(starting_positions, goal_positions)
-            agent = DubinsAgent2D(model, starting_position[SOneTo(2)], v0, starting_position[3], false, false, false, goal_position, nothing, turning_radius)
+            agent = DubinsAgent2D(model, starting_position[SOneTo(2)], v0, starting_position[3], false, false, false, goal_position, nothing, turning_radius, 0.0)
             add_agent_own_pos!(agent, model)
         end
     end

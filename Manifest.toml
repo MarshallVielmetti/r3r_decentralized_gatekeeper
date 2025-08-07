@@ -638,7 +638,7 @@ version = "1.2.1"
 
 [[deps.DynamicRRT]]
 deps = ["Dubins", "LinearAlgebra", "Plots", "StaticArrays", "Test"]
-git-tree-sha1 = "83ec249e97bfb410a2a342009a93aefc34b58d97"
+git-tree-sha1 = "45356a036ddaef7bca117ac5943ec043e1c0a67a"
 repo-rev = "main"
 repo-url = "https://github.com/MarshallVielmetti/DynamicRRT.jl.git"
 uuid = "be312fe0-eb12-4688-a566-77474f18788e"

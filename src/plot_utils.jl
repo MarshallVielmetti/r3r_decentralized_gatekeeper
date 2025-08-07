@@ -1,8 +1,8 @@
 module PlotUtils
 
-using CairoMakie, DataFrames, Dubins
+using CairoMakie, DataFrames, Dubins, Colors
 
-function animate_df(agent_df, model)
+function animate_df(agent_df, model; fade_trails=false)
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel="X", ylabel="Y", title="Agent Trajectories", aspect=DataAspect())
 
@@ -19,18 +19,24 @@ function animate_df(agent_df, model)
     xlims!(ax, 0, 1)
     ylims!(ax, 0, 1)  # Increased to accommodate 4 agents
 
-    # Define colors for agents
-    colors = [:orange, :blue, :red, :green, :purple, :brown, :pink, :gray, :olive, :cyan]
+    # Define colors for agents - generate distinct RGB colors
+    colors = [RGB(HSV(360 * (i - 1) / n_agents, 0.8, 0.9)) for i in 1:n_agents]
 
     # Create observables for animation - dynamically for all agents
     agent_positions = [Observable(Point2f[]) for _ in 1:n_agents]
     current_agents = [Observable(Point2f(0, 0)) for _ in 1:n_agents]
 
+    # For fade trails, we'll use separate observables for trail points with alpha
+    if fade_trails
+        trail_points = [Observable(Point2f[]) for _ in 1:n_agents]
+        trail_colors = [Observable(RGBAf[]) for _ in 1:n_agents]
+    end
+
     # Plot agent goals (static, no need for observables)
     for i in 1:n_agents
         agent_goal = agent_df.goal[agent_df.id.==unique_agents[i]][1]
         goal_point = Point2f(agent_goal[1], agent_goal[2])
-        scatter!(ax, [goal_point], color=colors[mod1(i, length(colors))], markersize=5)
+        scatter!(ax, [goal_point], color=colors[i], markersize=5)
     end
 
 
@@ -52,10 +58,15 @@ function animate_df(agent_df, model)
 
     # Plot trajectories, current positions, and circles for all agents
     for i in 1:n_agents
-        agent_color = colors[mod1(i, length(colors))]
+        agent_color = colors[i]
 
-        # Plot trajectory
-        lines!(ax, agent_positions[i], color=agent_color, linewidth=2, label="Agent $i")
+        if fade_trails
+            # For fade trails, use scatter with color observable for alpha control
+            scatter!(ax, trail_points[i], color=trail_colors[i], markersize=3, label="Agent $i")
+        else
+            # Plot trajectory (normal mode)
+            lines!(ax, agent_positions[i], color=agent_color, linewidth=2, label="Agent $i")
+        end
 
         # Plot current position
         scatter!(ax, current_agents[i], color=agent_color, markersize=8)
@@ -87,10 +98,30 @@ function animate_df(agent_df, model)
                 is_in_network = nrow(agent_current) > 0 && agent_current.in_network[1]
 
                 if is_in_network
-                    # Update trajectory up to current time (only for in-network agents)
+                    # Get all agent data up to current time
                     agent_data = filter(row -> row.id == agent_id && row.time <= t && row.in_network, agent_df)
+
                     if nrow(agent_data) > 0
-                        agent_positions[i][] = [Point2f(pos[1], pos[2]) for pos in agent_data.pos]
+                        positions = [Point2f(pos[1], pos[2]) for pos in agent_data.pos]
+
+                        if fade_trails
+                            # Update trail with fading colors
+                            n_points = length(positions)
+                            if n_points > 0
+                                agent_color = colors[i]
+
+                                # Create alpha values (newer points more opaque)
+                                alphas = [max(0.2, j / n_points) for j in 1:n_points]
+                                rgba_colors = [RGBAf(agent_color.r, agent_color.g, agent_color.b, alpha) for alpha in alphas]
+
+                                # Update observables
+                                trail_points[i][] = positions
+                                trail_colors[i][] = rgba_colors
+                            end
+                        else
+                            # Normal trail update
+                            agent_positions[i][] = positions
+                        end
                     end
 
                     # Update current position with bounds checking
@@ -105,9 +136,15 @@ function animate_df(agent_df, model)
                     end
                 else
                     # Hide agent by setting empty data
-                    agent_positions[i][] = Point2f[]
+                    if fade_trails
+                        trail_points[i][] = Point2f[]
+                        trail_colors[i][] = RGBAf[]
+                    else
+                        agent_positions[i][] = Point2f[]
+                    end
                     current_agents[i][] = Point2f(NaN, NaN)  # Hide current position
                     agent_circles[i][] = Point2f[]  # Hide circle
+                    comm_circles[i][] = Point2f[]  # Hide comm circle
                 end
             end
         end
@@ -189,6 +226,28 @@ function plot_agent_at_time(agent_df, model, agent_id, t)
         end
         lines!(ax1, pts, color=:red, label="Nominal Trajectory")
     end
+
+    return fig
+end
+
+function plot_timing_statistics(stats)
+    fig = Figure()
+    ax = Axis(fig[1, 1], title="Avg. Time/Iteration vs Agent Density",
+        xlabel="Agent Density (agents/dim²)", ylabel="Avg. Time/Agent Iteration (seconds)")
+
+    # Extract data and calculate density using the dim field from stats
+    n_agents = [stat.n_agents for stat in stats]
+    runtimes = [stat.runtime for stat in stats]
+    # dims = [stat.dim for stat in stats]
+    # agent_density = n_agents ./ (dims .^ 2)
+
+    # Plot
+    scatter!(ax, n_agents, runtimes, color=:blue, markersize=8, label="Runtime")
+    # lines!(ax, agent_density, runtimes, color=:blue, alpha=0.7)
+
+    # Add grid and legend
+    # grid!(ax)
+    axislegend(ax, position=:rt)
 
     return fig
 end

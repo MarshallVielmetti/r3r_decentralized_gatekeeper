@@ -66,4 +66,5 @@ It is in R3 because the state is x,y,θ
     goal::SVector{3,Float64} # Goal Position -- 3D Vector x,y,θ
     committed_trajectory::Union{Nothing,DubinsCompositeTrajectory{TN,TBS}} where {TN,TBS} # Composite trajectory for the agent or nothing
     turning_radius::Float64 # Minimum turning radius for Dubins dynamics
+    time_to_replan::Float64
 end

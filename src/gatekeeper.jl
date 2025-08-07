@@ -16,7 +16,7 @@ export construct_candidate, get_position, propagate_along_trajectory!
 export init_model
 export make_valid_function
 
-@kwdef mutable struct GatekeeperParameters{TP}
+@kwdef mutable struct GatekeeperParameters{TP,TD}
     properties::TP = nothing# Specific parameters
     Rcomm::Float64 = 16.0 # Communication Radius 
     Rplan::Float64 = 5.0 # Planning Radius
@@ -24,6 +24,7 @@ export make_valid_function
     Rgoal::Float64 = 0.5 # Goal pose radius to prevent weird numerical instabilities
     num_timesteps_before_replan::Int = 2 # Number of timesteps before agent reaches its switch time before replanning
     dt::Float64 = 0.01 # Simulation Time Step
+    dims::TD = (1.0, 1.0) # Dimensions of the world
 end
 
 function init_model(
@@ -46,7 +47,8 @@ function init_model(
         Rplan=Rplan,
         delta=delta,
         Rgoal=Rgoal,
-        dt=dt
+        dt=dt,
+        dims=dims
     )
 
     # Create the model object
@@ -90,16 +92,19 @@ function agent_step!(agent, model)
     end
 
     if agent_should_replan(agent, model)
-        println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
-        candidate_trajectory = construct_candidate(agent, model)
-        if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
-            println("\tAgent $(agent.id) has replanned successfully.")
-            update_committed_trajectory!(agent, model, candidate_trajectory)
-            agent.failed_last_replan = false
-        else
-            printstyled("\tAgent $(agent.id) failed to replan at time $(scaled_time(model))!\n", color=:red)
-            agent.failed_last_replan = true
+        t = @timed begin
+            println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
+            candidate_trajectory = construct_candidate(agent, model)
+            if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
+                println("\tAgent $(agent.id) has replanned successfully.")
+                update_committed_trajectory!(agent, model, candidate_trajectory)
+                agent.failed_last_replan = false
+            else
+                printstyled("\tAgent $(agent.id) failed to replan at time $(scaled_time(model))!\n", color=:red)
+                agent.failed_last_replan = true
+            end
         end
+        agent.time_to_replan = t.time
     end
 
     propagate_along_trajectory!(agent, model)
