@@ -31,7 +31,9 @@ The "Gatekeeper" algorithm is built on a few key ideas:
 
 ## Custom Julia Packages
 Dubins.jl: https://github.com/dev10110/Dubins.jl.git
+
 DynamicRRT.jl: https://github.com/MarshallVielmetti/DynamicRRT.jl.git
+
 OccupancyGrids.jl: https://github.com/MarshallVielmetti/OccupancyGrids.jl.git
 
 ## Project Structure
