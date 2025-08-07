@@ -6,7 +6,6 @@ Shared functionality that works independent of the specific agent type.
 module Gatekeeper
 
 using ..R3RCommon
-using ..STRRT_STAR
 
 using Agents, Random, StaticArrays
 
@@ -17,7 +16,7 @@ export construct_candidate, get_position, propagate_along_trajectory!
 export init_model
 export make_valid_function
 
-@kwdef mutable struct GatekeeperParameters{TP}
+@kwdef mutable struct GatekeeperParameters{TP,TD}
     properties::TP = nothing# Specific parameters
     Rcomm::Float64 = 16.0 # Communication Radius 
     Rplan::Float64 = 5.0 # Planning Radius
@@ -25,6 +24,7 @@ export make_valid_function
     Rgoal::Float64 = 0.5 # Goal pose radius to prevent weird numerical instabilities
     num_timesteps_before_replan::Int = 2 # Number of timesteps before agent reaches its switch time before replanning
     dt::Float64 = 0.01 # Simulation Time Step
+    dims::TD = (1.0, 1.0) # Dimensions of the world
 end
 
 function init_model(
@@ -33,11 +33,11 @@ function init_model(
     model_specific_params;
     delta::Float64=1.0,
     Rcomm::Float64=16.0,
-    Rgoal::Float64=0.5,
+    Rgoal::Float64=0.01,
     dt::Float64=0.1,
     rng=Random.MersenneTwister(1234),
-    dims::Tuple{Int,Int}=(100, 100) # Dimensions of the
-)
+    dims::Tuple{F,F}=(100, 100) # Dimensions of the
+) where {F<:Real}
     println("Initializing the model!")
     Rplan = (Rcomm - delta) / 3.0
 
@@ -47,11 +47,9 @@ function init_model(
         Rplan=Rplan,
         delta=delta,
         Rgoal=Rgoal,
-        dt=dt
+        dt=dt,
+        dims=dims
     )
-
-    STRRT_STAR.init_planner(100, Float32(delta), Float32(1.0), Float32(1.0))
-
 
     # Create the model object
     model = StandardABM(agent_type, ContinuousSpace(dims; periodic=false); (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
@@ -86,7 +84,7 @@ function agent_step!(agent, model)
         @error "Agent $(agent.id) is in collision at time $(scaled_time(model))!"
     end
 
-    if squared_dist(agent.pos, agent.goal) < model.delta^2
+    if squared_dist(agent.pos, agent.goal[SOneTo(2)]) < model.Rgoal^2
         # Agent has reached its goal
         println("\tAgent $(agent.id) has reached its goal at time $(scaled_time(model))!")
         remove_agent!(agent, model)
@@ -94,16 +92,19 @@ function agent_step!(agent, model)
     end
 
     if agent_should_replan(agent, model)
-        println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
-        candidate_trajectory = construct_candidate(agent, model)
-        if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
-            println("\tAgent $(agent.id) has replanned successfully.")
-            update_committed_trajectory!(agent, model, candidate_trajectory)
-            agent.failed_last_replan = false
-        else
-            printstyled("\tAgent $(agent.id) failed to replan at time $(scaled_time(model))!\n", color=:red)
-            agent.failed_last_replan = true
+        t = @timed begin
+            println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
+            candidate_trajectory = construct_candidate(agent, model)
+            if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
+                println("\tAgent $(agent.id) has replanned successfully.")
+                update_committed_trajectory!(agent, model, candidate_trajectory)
+                agent.failed_last_replan = false
+            else
+                printstyled("\tAgent $(agent.id) failed to replan at time $(scaled_time(model))!\n", color=:red)
+                agent.failed_last_replan = true
+            end
         end
+        agent.time_to_replan = t.time
     end
 
     propagate_along_trajectory!(agent, model)
@@ -157,13 +158,19 @@ function agent_should_replan(agent, model)::Bool
     # check if the agent even cares about replanning based on some heuristic
     wants_to_replan = scaled_time(model) > agent.committed_trajectory.t_switch - model.num_timesteps_before_replan * model.dt
 
-    @show agent.committed_trajectory.backup_set
+    # @show agent.committed_trajectory.backup_set
     if !isa(agent.committed_trajectory.backup_set, AbstractVector)
         @show agent.committed_trajectory
         @show agent
     end
 
-    ends_at_goal = squared_dist(agent.committed_trajectory.backup_set[1:2], agent.goal) <= model.Rgoal^2
+    ends_at_goal = squared_dist(agent.committed_trajectory.backup_set[SOneTo(2)], agent.goal[SOneTo(2)]) <= model.Rgoal^2
+
+    if ends_at_goal
+        println("\tAgent $(agent.id) does not need to replan because its backup set is at its goal position.")
+        return false
+    end
+
     any_neighbors_replanned = any(neighbor.just_replanned for neighbor in comms_radius(agent, model))
 
     # println("Wnats to Replan: $(wants_to_replan) -- switch time is $(agent.committed_trajectory.t_switch)")
@@ -174,6 +181,9 @@ function agent_should_replan(agent, model)::Bool
 end
 
 function update_committed_trajectory!(agent, model, candidate::AbstractCompositeTrajectory)
+    # println("[TRACE] Updating committed trajectory for agent $(agent.id) at time $(scaled_time(model))")
+    @show candidate
+
     agent.just_replanned = true
     agent.committed_trajectory = candidate
 end
@@ -185,6 +195,10 @@ end
 
 function get_position(agent, t::Float64)
     throw(ErrorException("get_position not implemented for trajectory of type $(typeof(agent))"))
+end
+
+function get_nominal_position(agent, t::Float64)
+    throw(ErrorException("get_nominal_position not implemented for trajectory of type $(typeof(agent))"))
 end
 
 function propagate_along_trajectory!(agent, model)
