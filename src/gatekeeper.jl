@@ -7,7 +7,7 @@ module Gatekeeper
 
 using ..R3RCommon
 
-using Agents, Random, StaticArrays
+using Agents, Random, StaticArrays, OccupancyGrids
 
 export construct_candidate, get_position, propagate_along_trajectory!
 
@@ -25,6 +25,7 @@ export make_valid_function
     num_timesteps_before_replan::Int = 2 # Number of timesteps before agent reaches its switch time before replanning
     dt::Float64 = 0.01 # Simulation Time Step
     dims::TD = (1.0, 1.0) # Dimensions of the world
+    occupancy_grid::Union{Nothing,OccupancyGrid} = nothing
 end
 
 function init_model(
