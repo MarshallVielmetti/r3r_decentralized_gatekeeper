@@ -119,7 +119,9 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
     #     CircleObstacle(ob.center, ob.radius)
     #     for ob in static_obstacles
     # ]
-    static_obstacles = []
+    static_obstacles = [
+        OccupancyGridObstacle(model.occupancy_grid)
+    ]
 
     neighbor_agent_trajectories::Vector{DubinsCompositeTrajectory} = [neighbor.committed_trajectory for neighbor in comms_radius(agent, model)]
     dynamic_obstacles = [
@@ -350,13 +352,17 @@ function init_dubins_agent_2d_problem(;
     Rgoal::Float64=0.01, ## Goal Radius 
     dt::Float64=0.005, ## Time Step
     seed::Int=1234, ## Random Seed
-    dim::Float64=1.0, ## Dimension of the world
+    dim::Float64=1.0, ## Dimension of the world,
+    occupancy_grid::Union{Nothing,OccupancyGrid}=nothing, ## Occupancy grid for the world
     turning_radius::Float64=0.05, ## Minimum turning radius for Dubins dynamics,
     starting_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing, ## Starting positions of agents
     goal_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing ## Goal positions of agents
 )
     # println("[TRACE] Entered init_dubins_agent_2d_problem")
     dims = (dim, dim)
+    if !isnothing(occupancy_grid)
+        dims = size(occupancy_grid)
+    end
 
     dims_min = @SVector [0.0, 0.0, -π]
     dims_max = @SVector [dims[1], dims[2], π]
