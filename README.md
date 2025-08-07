@@ -8,7 +8,7 @@ The core of the pathfinding logic leverages a custom Julia implementation of the
 
 | 4 Agents in a Circle | 60 Agents in a Circle |
 |-----------------------|-----------------------|
-| <img src="outputs/4_agent_circle.gif" alt="4 Agent Circle" width="400px"> | <img src="outputs/60_agent_circle.gif" alt="60 Agent Circle" width="400px"> |
+| <img src="readme_images/4_agent_circle.gif" alt="4 Agent Circle" width="400px"> | <img src="readme_images/60_agent_circle.gif" alt="60 Agent Circle" width="400px"> |
 
 ## Key Features
 
