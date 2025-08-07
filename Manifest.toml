@@ -1791,7 +1791,7 @@ version = "0.5.5"
 
 [[deps.OccupancyGrids]]
 deps = ["StaticArrays", "YAML"]
-git-tree-sha1 = "cffd0733ce48c476d5075cff988c593ee021458c"
+git-tree-sha1 = "6171fd23c2e09c094d0ce300fc75c9aee5cf3f6c"
 repo-rev = "main"
 repo-url = "https://github.com/MarshallVielmetti/OccupancyGrids.jl.git"
 uuid = "e6db0ae7-37ec-4765-aaf2-b047b4032ee3"
