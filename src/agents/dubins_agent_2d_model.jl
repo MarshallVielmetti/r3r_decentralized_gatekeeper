@@ -3,7 +3,7 @@ module DubinsAgent2DModel
 using ..R3RCommon
 using ..Gatekeeper
 
-using DynamicRRT, Dubins
+using DynamicRRT, Dubins, OccupancyGrids
 using StaticArrays, Random, Agents, LinearAlgebra
 
 export construct_candidate, get_position
@@ -115,13 +115,9 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
     # TODO Add the static obstacles in
     # static_obstacles = model.obstacles
 
-    # static_obstacles = [
-    #     CircleObstacle(ob.center, ob.radius)
-    #     for ob in static_obstacles
-    # ]
-    static_obstacles = [
-        OccupancyGridObstacle(model.occupancy_grid)
-    ]
+    static_obstacles = !isnothing(model.occupancy_grid) ? [
+        DubinsDynamicPathRRT.OccupancyGridObstacle(model.occupancy_grid)
+    ] : []
 
     neighbor_agent_trajectories::Vector{DubinsCompositeTrajectory} = [neighbor.committed_trajectory for neighbor in comms_radius(agent, model)]
     dynamic_obstacles = [
@@ -164,8 +160,8 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
 
     RRTStar.solve!(
         rrt_problem, sol;
-        max_iterations=50,
-        max_time_seconds=1.0,
+        max_iterations=2000,
+        max_time_seconds=4.0,
         do_rewire=true,
         early_exit=true, # TODO make better exit metric
         goal_bias=0.1
@@ -345,6 +341,29 @@ function Gatekeeper.propagate_along_trajectory!(agent::DubinsAgent2D, model)
     move_agent!(agent, new_position[SOneTo(2)], model) # Update agent's xy posiiton
 end
 
+function sample_collision_free_position(occupancy_grid, dims_diff, dims_min, padding; max_attempts::Int=1000)
+    """Sample a collision-free 3D position (x, y, theta) given an occupancy grid and domain constraints."""
+    attempts = 0
+
+    while attempts < max_attempts
+        candidate_pos = SVector{3,Float64}(rand(3)) .* dims_diff + dims_min + padding
+
+        # Check collision with occupancy grid if it exists
+        if occupancy_grid !== nothing
+            if !is_occupied(occupancy_grid, candidate_pos[SOneTo(2)])
+                return candidate_pos
+            end
+        else
+            # No occupancy grid, any position is valid
+            return candidate_pos
+        end
+        attempts += 1
+    end
+
+    error("Failed to find collision-free position after $max_attempts attempts")
+    throw(ErrorException("Failed to find collision-free position after $max_attempts attempts"))
+end
+
 function init_dubins_agent_2d_problem(;
     n_agents::Int=10, ## Number of agents
     delta::Float64=0.05, ## Inter-agent collision radius
@@ -354,6 +373,7 @@ function init_dubins_agent_2d_problem(;
     seed::Int=1234, ## Random Seed
     dim::Float64=1.0, ## Dimension of the world,
     occupancy_grid::Union{Nothing,OccupancyGrid}=nothing, ## Occupancy grid for the world
+    sample_grid::Union{Nothing,OccupancyGrid}=nothing, ## Sample grid for the world
     turning_radius::Float64=0.05, ## Minimum turning radius for Dubins dynamics,
     starting_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing, ## Starting positions of agents
     goal_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing ## Goal positions of agents
@@ -363,6 +383,11 @@ function init_dubins_agent_2d_problem(;
     if !isnothing(occupancy_grid)
         dims = size(occupancy_grid)
     end
+
+    # Round dims to the nearest 0.1
+    # dims = (round(dims[1], digits=1), round(dims[2], digits=1))
+    # dims = (floor(dims[1], digits=1), round(dims[2], digits=1))
+    dims = (floor(dims[1]), floor(dims[2]))
 
     dims_min = @SVector [0.0, 0.0, -π]
     dims_max = @SVector [dims[1], dims[2], π]
@@ -374,10 +399,10 @@ function init_dubins_agent_2d_problem(;
     Random.seed!(seed)
 
     if starting_positions === nothing
-        starting_positions = [SVector{3,Float64}(rand(3)) .* dims_diff + dims_min + padding for _ in SOneTo(n_agents)]
+        starting_positions = [sample_collision_free_position(!isnothing(sample_grid) ? sample_grid : occupancy_grid, dims_diff, dims_min, padding) for _ in SOneTo(n_agents)]
     end
     if goal_positions === nothing
-        goal_positions = [SVector{3,Float64}(rand(3)) .* dims_diff + dims_min + padding for _ in SOneTo(n_agents)]
+        goal_positions = [sample_collision_free_position(!isnothing(sample_grid) ? sample_grid : occupancy_grid, dims_diff, dims_min, padding) for _ in SOneTo(n_agents)]
     end
 
     for (start_pos, end_pos) in zip(starting_positions, goal_positions)
@@ -402,7 +427,9 @@ function init_dubins_agent_2d_problem(;
         Rgoal=Rgoal,
         dt=dt,
         rng=MersenneTwister(seed),
-        dims=dims)
+        dims=dims,
+        occupancy_grid=occupancy_grid,
+    )
 end
 
 end

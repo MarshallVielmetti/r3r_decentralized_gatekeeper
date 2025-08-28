@@ -2,12 +2,25 @@ module PlotUtils
 
 using CairoMakie, DataFrames, Dubins, Colors
 
-function animate_df(agent_df, model; fade_trails=false)
+function animate_df(agent_df, model; fade_trails=false, step_size=1)
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel="X", ylabel="Y", title="Agent Trajectories", aspect=DataAspect())
 
     # Get unique time steps and agent IDs
-    unique_times = unique(agent_df.time)
+    all_unique_times = unique(agent_df.time)
+    sort!(all_unique_times)
+
+    # Filter times to include only multiples of step_size, plus the final time
+    if step_size > 1
+        indices_to_keep = [i for i in 1:step_size:length(all_unique_times)]
+        # Ensure the final time is always included
+        if length(all_unique_times) ∉ indices_to_keep
+            push!(indices_to_keep, length(all_unique_times))
+        end
+        unique_times = all_unique_times[indices_to_keep]
+    else
+        unique_times = all_unique_times
+    end
     unique_agents = unique(agent_df.id)
     n_agents = length(unique_agents)
 
@@ -16,8 +29,26 @@ function animate_df(agent_df, model; fade_trails=false)
     @show n_agents
 
     # Set up axis limits
-    xlims!(ax, 0, 1)
-    ylims!(ax, 0, 1)  # Increased to accommodate 4 agents
+    xlims!(ax, 0, model.dims[1])
+    ylims!(ax, 0, model.dims[2])  # Increased to accommodate 4 agents
+
+    # Plot occupancy grid as background if it exists
+    if !isnothing(model.occupancy_grid)
+        # Get the occupancy grid data
+        grid_data = model.occupancy_grid.data
+        grid_resolution = model.occupancy_grid.grid_resolution
+
+        # Create inverted colormap (0 = white, 1 = black)
+        inverted_data = 1.0 .- grid_data
+
+        # Calculate proper coordinate ranges
+        n_rows, n_cols = size(grid_data)
+        x_range = range(0, n_cols * grid_resolution, length=n_cols)
+        y_range = range(0, n_rows * grid_resolution, length=n_rows)
+
+        # Plot as heatmap background with proper coordinates
+        heatmap!(ax, x_range, y_range, inverted_data', colormap=:grays, alpha=0.8)
+    end
 
     # Define colors for agents - generate distinct RGB colors
     colors = [RGB(HSV(360 * (i - 1) / n_agents, 0.8, 0.9)) for i in 1:n_agents]
