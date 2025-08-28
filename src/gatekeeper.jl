@@ -55,7 +55,7 @@ function init_model(
     )
 
     # Create the model object
-    model = StandardABM(agent_type, ContinuousSpace(dims; periodic=false); (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
+    model = StandardABM(agent_type, ContinuousSpace(dims; periodic=false, spacing=0.1); (agent_step!)=agent_step!, (model_step!)=model_step!, rng, properties)
     add_agents!(model)
 
     # Return the model
