@@ -29,6 +29,7 @@ struct DubinsCompositeTrajectory{TN,TBS} <: AbstractCompositeTrajectory
     backup_set::TBS
 end
 
+
 ## AGENT TYPES ##
 
 # abstract type AbstractGatekeeperAgent2D end
