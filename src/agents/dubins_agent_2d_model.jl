@@ -9,6 +9,14 @@ using StaticArrays, Random, Agents, LinearAlgebra
 export construct_candidate, get_position
 export init_dubins_agent_2d_problem
 
+
+struct DubinsBackup
+    orbit_center::SVector{2, Float64}
+    theta_off::Float64
+    radius::Float64
+    orientation::Symbol # :rhs or :lhs
+end
+
 function Gatekeeper.construct_candidate(agent::DubinsAgent2D, model)
     # println("[TRACE] Entered Gatekeeper.construct_candidate")
     # Get the nominal to track
@@ -23,36 +31,49 @@ function Gatekeeper.construct_candidate(agent::DubinsAgent2D, model)
     # Validate the nominal trajectory exists
     if nominal_trajectory === nothing || length(nominal_trajectory) == 0
         println("\tAgent $(agent.id) failed to construct a nominal trajectory.")
+        agent.time_to_replan = 0.0
         return nothing
     end
 
-    # Choose a backup set -- either where the nominal leaves the planning radius, 
-    # or immediately before it intersects with an obstacle
-    backup_result = choose_ideal_backup_set(agent, model, nominal_trajectory)
-    if backup_result === nothing
-        @error "Failed to choose a backup set for agent $(agent.id)."
-        return nothing
-    end
-    backup_set, t_bak = backup_result
+    t = @timed begin
+        # Choose a backup set -- either where the nominal leaves the planning radius, 
+        # or immediately before it intersects with an obstacle
+        # backup_result = choose_ideal_backup_set(agent, model, nominal_trajectory)
+        # if backup_result === nothing
+        #     @error "Failed to choose a backup set for agent $(agent.id)."
+        #     return nothing
+        # end
+        # backup_set, t_bak = backup_result
 
-    # Step 5: Validate the safety of the backup set
-    if !validate_backup_set(agent, model, backup_set, t_bak)
-        println("\tFailed to validate backup set.")
-        return nothing
+        # Step 5: Validate the safety of the backup set
+        # if !validate_backup_set(agent, model, backup_set, t_bak)
+        #     println("\tFailed to validate backup set.")
+        #     return nothing
+        # end
+
+        backup_result = choose_safe_backup_set(agent, model, nominal_trajectory)
+        if backup_result === nothing
+            @error "Failed to find a safe backup set for agent $(agent.id)."
+            return nothing
+        end
+
+        backup_set, t_bak = backup_result
+
+        if (nominal_trajectory[1][2] - scaled_time(model) >= model.dt)
+            @error "Nominal trajectory start time does not match current model time. Expected $(scaled_time(model)), got $(nominal_trajectory[3, 1])"
+        end
+
+        # Create a candidate trajectory
+        candidate_trajectory = DubinsCompositeTrajectory(
+            scaled_time(model),
+            t_bak, # backup time = switch time
+            t_bak,
+            nominal_trajectory,
+            backup_set # Tuple of (orbit_center, :symbol (lhs or rhs))
+        )
     end
 
-    if (nominal_trajectory[1][2] - scaled_time(model) >= model.dt)
-        @error "Nominal trajectory start time does not match current model time. Expected $(scaled_time(model)), got $(nominal_trajectory[3, 1])"
-    end
-
-    # Create a candidate trajectory
-    candidate_trajectory = DubinsCompositeTrajectory(
-        scaled_time(model),
-        t_bak, # backup time = switch time
-        t_bak,
-        nominal_trajectory,
-        backup_set
-    )
+    agent.time_to_replan = t.time
 
     return candidate_trajectory
 end
@@ -160,11 +181,11 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
 
     RRTStar.solve!(
         rrt_problem, sol;
-        max_iterations=2000,
-        max_time_seconds=4.0,
+        max_iterations=50,
+        max_time_seconds=1.00,
         do_rewire=true,
-        early_exit=true, # TODO make better exit metric
-        goal_bias=0.1
+        early_exit=false, # TODO make better exit metric
+        goal_bias=0.1,
     )
 
     return sol
@@ -197,12 +218,6 @@ function choose_ideal_backup_set(agent::DubinsAgent2D, model, nominal_trajectory
         return last_path_end_point, last_path_end_time
     end
 
-
-    # Idx of the first path that:
-    # 1. Ends at or after the current time
-    # 2. Ends outside the planning radius
-    # exit_idx -= 1 # Get the idx matching the second set of conditions
-    # @assert exit_idx > 0 "Exit index must be greater than 0, but got $exit_idx"
 
     # Find the first time along the dubins path that is outside the planning radius
     exit_point, exit_time = compute_exit_point(
@@ -283,6 +298,122 @@ function validate_backup_set(agent::DubinsAgent2D, model, backup_set, t_bak; sam
     return true
 end
 
+function choose_safe_backup_set(agent::DubinsAgent2D, model, nominal_trajectory; sampling_resolution::Float64 = 0.1)
+    current_time = scaled_time(model)
+
+    # idx of the first path that:
+    # 1. Starts at or after the current time
+    # 2. Starts outside the planning radius
+    # Thus, the previous path must end at or after the current time
+    # and end outside the planning radius
+    exit_idx = findlast(nominal_trajectory) do (path, start_time)
+        path_end_time = start_time + dubins_path_length(path)
+        path_end_time >= current_time && squared_dist(path.qi[SOneTo(2)], agent.pos) <= model.Rplan^2
+    end
+
+    # No path on the nominal is in the future at all and in the planning radius?
+    if (exit_idx === nothing)
+        @assert false "This should never happen???"
+
+        last_path, last_path_start_time = nominal_trajectory[end]
+        last_path_length = dubins_path_length(last_path)
+        last_path_end_time = last_path_start_time + last_path_length
+        _, last_path_end_point = dubins_path_sample(last_path, last_path_length)
+
+        return last_path_end_point, last_path_end_time
+    end
+
+    # Work backwards through paths, trying to find valid backup sets
+    for path_idx in exit_idx:-1:1
+        path, path_start_time = nominal_trajectory[path_idx]
+        path_length = dubins_path_length(path)
+
+        for switch_time_offset in path_length:-sampling_resolution:0
+            _, pose_at_switch_time = dubins_path_sample(path, switch_time_offset)
+
+            # Each pose along the trajectory has two valid candidate backup set orbits
+            # one on the left and one on the right
+            pose_theta = pose_at_switch_time[3]
+
+            rotation_matrix = @SMatrix [cos(pose_theta) -sin(pose_theta);
+                                        sin(pose_theta) cos(pose_theta)]
+            offset_vector = @SVector [0.0, agent.turning_radius]
+
+            # Translate offset vector to be in the correct rotation frame
+            translated_offset_vector = rotation_matrix * offset_vector
+            lhs_candidate = pose_at_switch_time[1:2] + translated_offset_vector
+            rhs_candidate = pose_at_switch_time[1:2] - translated_offset_vector
+
+            switch_time = path_start_time + switch_time_offset
+
+            if is_valid_backup_set(agent, model, lhs_candidate, switch_time)
+                # Calculate the angle from orbit center to switch position
+                center_to_switch = pose_at_switch_time[1:2] - lhs_candidate
+                initial_angle = atan(center_to_switch[2], center_to_switch[1])
+                return DubinsBackup(lhs_candidate, rem2pi(initial_angle, RoundNearest), agent.turning_radius, :lhs), switch_time
+            elseif is_valid_backup_set(agent, model, rhs_candidate, switch_time)
+                # Calculate the angle from orbit center to switch position
+                center_to_switch = pose_at_switch_time[1:2] - rhs_candidate
+                initial_angle = atan(center_to_switch[2], center_to_switch[1])
+                return DubinsBackup(rhs_candidate, rem2pi(initial_angle, RoundNearest), agent.turning_radius, :rhs), switch_time
+            end
+        end
+    end
+
+    return nothing
+end
+
+function is_valid_backup_set(agent::DubinsAgent2D, model, orbit_center, t_switch, sampling_resolution::Float64 = 0.1)
+    # A Backup set is valid if:
+    # 1. Contained fully inside the planning radius
+    # 2. Does not collide with any obstacles
+    # 3. Is sufficiently far from all neighbor's backup sets
+    # 4. No agent's committed's pass through after the switch time
+
+    # First check if its contained fully within the planning radius
+    if squared_dist(agent.pos, orbit_center) > (model.Rplan - agent.turning_radius)^2
+        return false
+    end
+
+    # TODO Check if colliding with obstacles -- SDF should be greater than turning_radius
+    if !isnothing(model.occupancy_grid) && sdf(model.occupancy_grid, orbit_center) <= agent.turning_radius
+        return false
+    end
+
+    for neighbor in comms_radius(agent, model)
+        if squared_dist(orbit_center, neighbor.committed_trajectory.backup_set.orbit_center) < (2 * (agent.turning_radius + model.delta))^2
+            return false
+        end
+    end
+
+    for neighbor in comms_radius(agent, model)
+        if t_switch >= neighbor.committed_trajectory.t_bak
+            continue
+        end
+
+        idx = findlast(tup -> tup[2] < t_switch, neighbor.committed_trajectory.nominal_trajectory)
+        if idx === nothing
+            @error "Failed to find valid idx in neighbor nominal trajectory for agent $(agent.id) and neighbor $(neighbor.id)."
+            return false
+        end
+
+
+        # For all rest of paths in neighbor nominal, starting from idx until neighbor enters its backup
+        # check if they collide with the agent's backup set
+        for (path, _) in neighbor.committed_trajectory.nominal_trajectory[idx:end]
+            path_length = dubins_path_length(path) # length of current path
+
+            # Check if any point along the path is within delta of the backup set
+            if any(t -> squared_dist(dubins_path_sample(path, t * path_length)[2][SOneTo(2)], orbit_center) < (2*(model.delta + agent.turning_radius))^2, 0:sampling_resolution:1.0)
+                return false
+            end
+        end
+    end
+
+    return true
+end
+
+
 function Gatekeeper.get_position(trajectory::DubinsCompositeTrajectory, t::Float64)::SVector{2,Float64}
     # println("[TRACE] Entered Gatekeeper.get_position")
     return get_pose(trajectory, t)[SOneTo(2)]
@@ -314,7 +445,39 @@ function get_pose(trajectory::DubinsCompositeTrajectory, t::Float64)::SVector{3,
     # println("[TRACE] Entered get_pose")
     # Handle backup set case
     if t >= trajectory.t_bak
-        return trajectory.backup_set
+        t_off = t - trajectory.t_bak
+        orbit_center = trajectory.backup_set.orbit_center
+        offset_theta = trajectory.backup_set.theta_off
+
+        circumference = 2 * π * trajectory.backup_set.radius
+
+        # since speed is 1
+        dist_along_backup_set = t_off % circumference
+
+        # convert to offset in radians
+        theta = dist_along_backup_set / trajectory.backup_set.radius
+
+        # Apply direction based on orientation
+        if trajectory.backup_set.orientation == :lhs
+            # Left-hand (counterclockwise) orbit: negative angular velocity
+            world_frame_theta = offset_theta + theta
+            pose_theta = world_frame_theta + π / 2
+        else
+            # Right-hand (clockwise) orbit: positive angular velocity
+            world_frame_theta = offset_theta - theta
+            pose_theta = world_frame_theta - π / 2
+        end
+
+        offset_vector = @SVector [trajectory.backup_set.radius, 0]
+        rotation_matrix = @SMatrix [cos(world_frame_theta) -sin(world_frame_theta);
+                            sin(world_frame_theta) cos(world_frame_theta)]
+
+        pos_xy = rotation_matrix * offset_vector + orbit_center
+
+        # wrap angle to [-pi, pi]
+        pose_theta = rem2pi(pose_theta, RoundNearest)
+
+        return @SVector [pos_xy[1], pos_xy[2], pose_theta]
     end
 
     # Must be in nominal trajectory
@@ -371,7 +534,7 @@ function init_dubins_agent_2d_problem(;
     Rgoal::Float64=0.01, ## Goal Radius 
     dt::Float64=0.005, ## Time Step
     seed::Int=1234, ## Random Seed
-    dim::Float64=1.0, ## Dimension of the world,
+    dim::Float64=2.0, ## Dimension of the world,
     occupancy_grid::Union{Nothing,OccupancyGrid}=nothing, ## Occupancy grid for the world
     sample_grid::Union{Nothing,OccupancyGrid}=nothing, ## Sample grid for the world
     turning_radius::Float64=0.05, ## Minimum turning radius for Dubins dynamics,

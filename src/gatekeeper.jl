@@ -95,7 +95,7 @@ function agent_step!(agent, model)
     end
 
     if agent_should_replan(agent, model)
-        t = @timed begin
+        # t = @timed begin
             println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
             candidate_trajectory = construct_candidate(agent, model)
             if candidate_trajectory !== nothing && validate_candidate(candidate_trajectory, agent, model)
@@ -106,8 +106,10 @@ function agent_step!(agent, model)
                 printstyled("\tAgent $(agent.id) failed to replan at time $(scaled_time(model))!\n", color=:red)
                 agent.failed_last_replan = true
             end
-        end
-        agent.time_to_replan = t.time
+        # end
+        # agent.time_to_replan = t.time
+    else
+        agent.time_to_replan = 0.0
     end
 
     propagate_along_trajectory!(agent, model)
@@ -162,12 +164,14 @@ function agent_should_replan(agent, model)::Bool
     wants_to_replan = scaled_time(model) > agent.committed_trajectory.t_switch - model.num_timesteps_before_replan * model.dt
 
     # @show agent.committed_trajectory.backup_set
-    if !isa(agent.committed_trajectory.backup_set, AbstractVector)
-        @show agent.committed_trajectory
-        @show agent
-    end
+    # if !isa(agent.committed_trajectory.backup_set, AbstractVector)
+    #     @show agent.committed_trajectory
+    #     @show agent
+    # end
 
-    ends_at_goal = squared_dist(agent.committed_trajectory.backup_set[SOneTo(2)], agent.goal[SOneTo(2)]) <= model.Rgoal^2
+    # TODO This is problematic for the new time-parameterized backup sets
+    # ends_at_goal = squared_dist(agent.committed_trajectory.backup_set[SOneTo(2)], agent.goal[SOneTo(2)]) <= model.Rgoal^2
+    ends_at_goal = squared_dist(agent.committed_trajectory.backup_set.orbit_center, agent.goal[SOneTo(2)]) <= (model.Rgoal + agent.turning_radius)^2
 
     if ends_at_goal
         println("\tAgent $(agent.id) does not need to replan because its backup set is at its goal position.")

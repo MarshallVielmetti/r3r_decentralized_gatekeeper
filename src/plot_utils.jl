@@ -2,7 +2,7 @@ module PlotUtils
 
 using CairoMakie, DataFrames, Dubins, Colors
 
-function animate_df(agent_df, model; fade_trails=false, step_size=1)
+function animate_df(agent_df, model; fade_trails=false, step_size=1, show_ogm=true)
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel="X", ylabel="Y", title="Agent Trajectories", aspect=DataAspect())
 
@@ -33,7 +33,7 @@ function animate_df(agent_df, model; fade_trails=false, step_size=1)
     ylims!(ax, 0, model.dims[2])  # Increased to accommodate 4 agents
 
     # Plot occupancy grid as background if it exists
-    if !isnothing(model.occupancy_grid)
+    if !isnothing(model.occupancy_grid) && show_ogm
         # Get the occupancy grid data
         grid_data = model.occupancy_grid.data
         grid_resolution = model.occupancy_grid.grid_resolution
@@ -83,9 +83,14 @@ function animate_df(agent_df, model; fade_trails=false, step_size=1)
     comm_circle_x = Rcomm .* cos.(θ)
     comm_circle_y = Rcomm .* sin.(θ)
 
+    Rplan = model.Rplan
+    plan_circle_x = Rplan .* cos.(θ)
+    plan_circle_y = Rplan .* sin.(θ)
+
     # Create observables for circle positions
     agent_circles = [Observable([Point2f(x, y) for (x, y) in zip(unit_circle_x, unit_circle_y)]) for _ in 1:n_agents]
-    comm_circles = [Observable([Point2f(x, y) for (x, y) in zip(unit_circle_x, unit_circle_y)]) for _ in 1:n_agents]
+    comm_circles = [Observable([Point2f(x, y) for (x, y) in zip(comm_circle_x, comm_circle_y)]) for _ in 1:n_agents]
+    plan_circles = [Observable([Point2f(x, y) for (x, y) in zip(plan_circle_x, plan_circle_y)]) for _ in 1:n_agents]
 
     # Plot trajectories, current positions, and circles for all agents
     for i in 1:n_agents
@@ -107,6 +112,9 @@ function animate_df(agent_df, model; fade_trails=false, step_size=1)
 
         # Plot circle around agent
         lines!(ax, comm_circles[i], color=agent_color, linewidth=1, alpha=0.5, linestyle=:dash)
+
+        # Plot planning circle around agent
+        lines!(ax, plan_circles[i], color=agent_color, linewidth=1, alpha=0.5, linestyle=:dash)
     end
 
     # axislegend(ax, position=:rt, tellwidth=false, tellheight=false)
@@ -164,6 +172,7 @@ function animate_df(agent_df, model; fade_trails=false, step_size=1)
                         agent_circles[i][] = [Point2f(agent_center[1] + x, agent_center[2] + y) for (x, y) in zip(unit_circle_x, unit_circle_y)]
 
                         comm_circles[i][] = [Point2f(agent_center[1] + x, agent_center[2] + y) for (x, y) in zip(comm_circle_x, comm_circle_y)]
+                        plan_circles[i][] = [Point2f(agent_center[1] + x, agent_center[2] + y) for (x, y) in zip(plan_circle_x, plan_circle_y)]
                     end
                 else
                     # Hide agent by setting empty data
@@ -176,6 +185,7 @@ function animate_df(agent_df, model; fade_trails=false, step_size=1)
                     current_agents[i][] = Point2f(NaN, NaN)  # Hide current position
                     agent_circles[i][] = Point2f[]  # Hide circle
                     comm_circles[i][] = Point2f[]  # Hide comm circle
+                    plan_circles[i][] = Point2f[]  # Hide plan circle
                 end
             end
         end
@@ -224,8 +234,8 @@ end
 function plot_agent_at_time(agent_df, model, agent_id, t)
     fig = Figure()
     ax1 = Axis(fig[1, 1], title="Agent $agent_id at Time $t", xlabel="X", ylabel="Y")
-    xlims!(ax1, 0, 1)
-    ylims!(ax1, 0, 1)
+    # xlims!(ax1, 0, 1)
+    # ylims!(ax1, 0, 1)
 
     agent_data = filter(row -> row.id == agent_id && row.time == t, agent_df)
     # Failure case
