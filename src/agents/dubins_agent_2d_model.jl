@@ -181,10 +181,10 @@ function plan_nominal_with_rrt(agent::DubinsAgent2D, model)::RRTStar.RRTStarSolu
 
     RRTStar.solve!(
         rrt_problem, sol;
-        max_iterations=50,
-        max_time_seconds=1.00,
+        max_iterations=model.rrt_iterations,
+        max_time_seconds=model.rrt_timeout,
         do_rewire=true,
-        early_exit=false, # TODO make better exit metric
+        early_exit=model.rrt_early_exit,
         goal_bias=0.1,
     )
 
@@ -539,7 +539,10 @@ function init_dubins_agent_2d_problem(;
     sample_grid::Union{Nothing,OccupancyGrid}=nothing, ## Sample grid for the world
     turning_radius::Float64=0.05, ## Minimum turning radius for Dubins dynamics,
     starting_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing, ## Starting positions of agents
-    goal_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing ## Goal positions of agents
+    goal_positions::Union{Nothing,Vector{SVector{3,Float64}}}=nothing, ## Goal positions of agents
+    rrt_iterations::Int=2000,
+    rrt_timeout::Float64=1.0,
+    rrt_early_exit::Bool=true,
 )
     # println("[TRACE] Entered init_dubins_agent_2d_problem")
     dims = (dim, dim)
@@ -592,6 +595,9 @@ function init_dubins_agent_2d_problem(;
         rng=MersenneTwister(seed),
         dims=dims,
         occupancy_grid=occupancy_grid,
+        rrt_early_exit=rrt_early_exit,
+        rrt_iterations=rrt_iterations,
+        rrt_timeout=rrt_timeout
     )
 end
 

@@ -26,6 +26,9 @@ export make_valid_function
     dt::Float64 = 0.01 # Simulation Time Step
     dims::TD = (1.0, 1.0) # Dimensions of the world
     occupancy_grid::Union{Nothing,OccupancyGrid} = nothing
+    rrt_iterations::Int=2000
+    rrt_timeout::Float64=1.0
+    rrt_early_exit::Bool=true
 end
 
 function init_model(
@@ -38,7 +41,10 @@ function init_model(
     dt::Float64=0.1,
     rng=Random.MersenneTwister(1234),
     dims::Tuple{F,F}=(100, 100), # Dimensions of the scenario,
-    occupancy_grid::Union{Nothing,OccupancyGrid}=nothing
+    occupancy_grid::Union{Nothing,OccupancyGrid}=nothing,
+    rrt_iterations::Int=2000,
+    rrt_timeout::Float64=1.0,
+    rrt_early_exit::Bool=true,
 ) where {F<:Real}
     println("Initializing the model!")
     Rplan = (Rcomm - delta) / 3.0
@@ -51,7 +57,10 @@ function init_model(
         Rgoal=Rgoal,
         dt=dt,
         dims=dims,
-        occupancy_grid=occupancy_grid
+        occupancy_grid=occupancy_grid,
+        rrt_iterations=rrt_iterations,
+        rrt_timeout=rrt_timeout,
+        rrt_early_exit=rrt_early_exit
     )
 
     # Create the model object
