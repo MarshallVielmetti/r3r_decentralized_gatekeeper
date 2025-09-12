@@ -1,4 +1,4 @@
-# R3R: A Decentralized Multi-Agent Motion Planning Framework
+# R3R: Decentralized Multi-Agent Collision Avoidance with Infinite-Horizon Safety
 
 This project is a simulation framework written in Julia for decentralized, multi-agent motion planning. It implements the "Gatekeeper" algorithm, which allows multiple agents to navigate to their goals in a shared 2D environment while avoiding collisions with one another.
 
