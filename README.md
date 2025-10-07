@@ -6,6 +6,8 @@ The core of the pathfinding logic leverages a custom Julia implementation of the
 
 ## Example Simulations
 
+https://github.com/user-attachments/assets/1619fd7c-7f65-4920-9e4c-d5e66d9e9490
+
 | Figure | Description |
 |--------|-------------|
 | ![32 Agents](examples/32_pretty_system_summary.png) | **32 Agent System Evolution** - Multi-panel visualization showing the progression of 32 agents navigating to their goals using the Gatekeeper algorithm |
@@ -13,9 +15,7 @@ The core of the pathfinding logic leverages a custom Julia implementation of the
 | ![128 Agents](examples/128_pretty_system_summary.png) | **128 Agent System Evolution** - High-density scenario with 128 agents showcasing the algorithm's performance at scale |
 | ![Final System](examples/pretty_system_summary_FINAL.png) | **Publication-Quality Visualization** - Clean, paper-ready visualization of multi-agent coordination with planning radii and trajectory visualization |
 
-### Dynamic System Animation
 
-https://github.com/user-attachments/assets/1619fd7c-7f65-4920-9e4c-d5e66d9e9490
 
 
 ## Key Features
