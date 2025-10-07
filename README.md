@@ -6,11 +6,16 @@ The core of the pathfinding logic leverages a custom Julia implementation of the
 
 ## Example Simulations
 
-| 4 Agents in a Circle | 60 Agents in a Circle |
-|-----------------------|-----------------------|
-| <img src="readme_images/4_agent_circle.gif" alt="4 Agent Circle" width="400px"> | <img src="readme_images/60_agent_circle.gif" alt="60 Agent Circle" width="400px"> |
-| 48 Agents in an Indoor Map | 5 Agents at Willow Garage |
-| <img src="readme_images/48_agent_indoor.gif" alt="48 Agent Indoor" width="400px"> | <img src="readme_images/willow_garage_5.gif" alt="Willow Garage" width="400px"> |
+| Figure | Description |
+|--------|-------------|
+| ![32 Agents](examples/32_pretty_system_summary.png) | **32 Agent System Evolution** - Multi-panel visualization showing the progression of 32 agents navigating to their goals using the Gatekeeper algorithm |
+| ![64 Agents](examples/64_pretty_system_summary.png) | **64 Agent System Evolution** - Larger-scale simulation demonstrating scalability with 64 agents in coordinated motion |
+| ![128 Agents](examples/128_pretty_system_summary.png) | **128 Agent System Evolution** - High-density scenario with 128 agents showcasing the algorithm's performance at scale |
+| ![Final System](examples/pretty_system_summary_FINAL.png) | **Publication-Quality Visualization** - Clean, paper-ready visualization of multi-agent coordination with planning radii and trajectory visualization |
+
+### Dynamic System Animation
+
+https://github.com/MarshallVielmetti/r3r_decentralized_gatekeeper/assets/readme_images/full_system_plot.mp4
 
 ## Key Features
 
@@ -79,7 +84,3 @@ Enter the package manager by pressing `]` and activate the project environment.
 pkg> activate .
 pkg> instantiate
 ```
-
-### 2. Run a Simulation
-
-Simulations can be run from within the Julia REPL after activating the project environment. The results, typically `.gif` animations, are saved in the `outputs/` directory.
