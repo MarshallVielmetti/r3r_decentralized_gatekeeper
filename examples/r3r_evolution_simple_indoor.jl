@@ -4,40 +4,50 @@ using CairoMakie, Colors, ColorSchemes
 using DynamicRRT, OccupancyGrids
 using r3r
 
-N_AGENTS = 4
-center = (5.0, 5.0)
-radius = 2.5
+# N_AGENTS = 128
+N_AGENTS = 32
+# center = (5.0, 5.0)
+# radius = 2.5
 
-starting_positions = SVector{3, Float64}[]
-goal_positions = SVector{3, Float64}[]
-for i in 1:N_AGENTS
-    angle = 2π * (i - 1) / N_AGENTS
+# starting_positions = SVector{3, Float64}[]
+# goal_positions = SVector{3, Float64}[]
+# for i in 1:N_AGENTS
+#     angle = 2π * (i - 1) / N_AGENTS
 
-    x_start = center[1] + radius * cos(angle)
-    y_start = center[2] + radius * sin(angle)
+#     x_start = center[1] + radius * cos(angle)
+#     y_start = center[2] + radius * sin(angle)
 
-    x_goal = center[1] + radius * cos(angle + π)
-    y_goal = center[2] + radius * sin(angle + π)
+#     x_goal = center[1] + radius * cos(angle + π)
+#     y_goal = center[2] + radius * sin(angle + π)
 
-    push!(starting_positions, SVector{3, Float64}(x_start, y_start, angle + π))
-    push!(goal_positions, SVector{3, Float64}(x_goal, y_goal, angle + π))
-end
+#     push!(starting_positions, SVector{3, Float64}(x_start, y_start, angle + π))
+#     push!(goal_positions, SVector{3, Float64}(x_goal, y_goal, angle + π))
+# end
 
-random_seed = 2234123
-rcomm = 4.0
+ogm = load_grid(SimpleIndoor1Large; inflation=0.00, compute_sdf=true)
+inflated_ogm = load_grid(SimpleIndoor1Large; inflation=3.0, compute_sdf=true)
 
-rrt_iterations = 50
-rrt_timeout = 1.0
-rrt_early_exit = false
+# random_seed = 2234123
+random_seed = 3234123
+rcomm = 32.0
 
-turning_radius = 0.25
-delta = 0.01
-model = r3r.init_dubins_agent_2d_problem(;starting_positions=starting_positions, goal_positions=goal_positions,n_agents=N_AGENTS, seed=random_seed, delta=delta, Rcomm=rcomm, turning_radius=turning_radius, dim=10.0, rrt_iterations=rrt_iterations, rrt_timeout=rrt_timeout, rrt_early_exit=rrt_early_exit) # , occupancy_grid=ogm, sample_grid=inflated_ogm)
+rrt_iterations = 1000
+rrt_timeout = 5.0
+rrt_early_exit = true
+
+turning_radius = 0.5
+delta = 0.5
+
+# Simulation time step
+dt = 0.2
+min_replan_cooldown = 50  # Minimum steps between replans for each agent
+
+model = r3r.init_dubins_agent_2d_problem(;n_agents=N_AGENTS, dt=dt, seed=random_seed, delta=delta, Rcomm=rcomm, turning_radius=turning_radius, rrt_iterations=rrt_iterations, rrt_timeout=rrt_timeout, rrt_early_exit=rrt_early_exit, occupancy_grid=ogm, sample_grid=inflated_ogm, min_replan_cooldown=20) # , occupancy_grid=ogm, sample_grid=inflated_ogm)
 
 # Take an initial step
 # till_done = (model_in, t) -> nagents(model_in) == 0  || t > 1.0
 # agent_df, model_df = run!(model, till_done)
-for _ in 1:5
+for _ in 1:50
     step!(model)
 end
 
@@ -59,6 +69,23 @@ function plot_system_state(model, title_text="Current System Configuration", leg
     # Set axis limits
     xlims!(ax, 0 + 2., model.dims[1] - 2.)
     ylims!(ax, 0 + 2., model.dims[2] - 2.)
+
+    if !isnothing(model.occupancy_grid) && true
+        # Get the occupancy grid data
+        grid_data = model.occupancy_grid.data
+        grid_resolution = model.occupancy_grid.grid_resolution
+
+        # Create inverted colormap (0 = white, 1 = black)
+        inverted_data = 1.0 .- grid_data
+
+        # Calculate proper coordinate ranges
+        n_rows, n_cols = size(grid_data)
+        x_range = range(0, n_cols * grid_resolution, length=n_cols)
+        y_range = range(0, n_rows * grid_resolution, length=n_rows)
+
+        # Plot as heatmap background with proper coordinates
+        heatmap!(ax, x_range, y_range, inverted_data', colormap=:grays, alpha=0.8)
+    end
 
     # Generate distinct colors for each agent using the tab10 palette (colorblind friendly)
     n_agents = N_AGENTS
@@ -84,6 +111,10 @@ function plot_system_state(model, title_text="Current System Configuration", leg
         try
             agent = model[i]
         catch
+            continue
+        end
+
+        if isnothing(agent.committed_trajectory)
             continue
         end
 
@@ -145,7 +176,7 @@ function plot_system_state(model, title_text="Current System Configuration", leg
         # Plot committed trajectory if it exists
         if !isnothing(agent.committed_trajectory)
             trajectory_points = []
-            t_sample = 0.0:0.1:10.0  # Sample trajectory for 2 time units
+            t_sample = 0.0:0.1:20.0  # Sample trajectory for 2 time units
 
             for t in t_sample
                 try
@@ -225,11 +256,11 @@ end
 """
 Generate a publication-style multi-panel snapshot figure.
 """
-fig = Figure(resolution=(2000, 1000), padding=(5,5,5,5))
+fig = Figure(resolution=(1500, 1000), padding=(5,5,5,5))
 
 # Optional: adjust inter-panel gaps (nearly flush but a hairline for separation)
-colgap!(fig.layout, 64)
-rowgap!(fig.layout, 64)
+colgap!(fig.layout, 8)
+rowgap!(fig.layout, 8)
 
 for i in 1:6
         # Map panel index to 2x3 grid
@@ -243,9 +274,9 @@ for i in 1:6
         plot_system_state(model, "", false, (1000, 1000), 16, ax)
 
         # Advance simulation between snapshots
-        till_done = (model_in, t) -> nagents(model_in) == 0  || t > 200.0
+        till_done = (model_in, t) -> nagents(model_in) == 0  || t > 300.0
         agent_df, model_df = run!(model, till_done)
 end
 
 save("pretty_system_summary.png", fig)
-save("pretty_system_summary.pdf", fig)
+# save("pretty_system_summary.pdf", fig)

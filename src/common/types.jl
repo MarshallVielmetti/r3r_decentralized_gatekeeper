@@ -68,4 +68,7 @@ It is in R3 because the state is x,y,θ
     committed_trajectory::Union{Nothing,DubinsCompositeTrajectory{TN,TBS}} where {TN,TBS} # Composite trajectory for the agent or nothing
     turning_radius::Float64 # Minimum turning radius for Dubins dynamics
     time_to_replan::Float64
+    count_neighbors_at_replan::Float64
+    min_replan_cooldown::Int # Minimum number of time steps between replan attempts
+    curr_replan_cooldown::Int # Current cooldown counter
 end

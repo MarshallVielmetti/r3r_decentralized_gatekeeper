@@ -84,11 +84,16 @@ end
 function agent_step!(agent, model)
     println("Agent $(agent.id) step at time $(scaled_time(model))")
 
-    if !agent.in_network
+    if !agent.in_network && agent.curr_replan_cooldown <= 0
+        agent.curr_replan_cooldown = agent.min_replan_cooldown
         if try_to_join_network!(agent, model)
             println("\tAgent $(agent.id) has joined the network successfully!")
             propagate_along_trajectory!(agent, model)
         end
+        return
+    elseif !agent.in_network && agent.curr_replan_cooldown > 0
+        agent.curr_replan_cooldown -= 1
+        println("\tAgent $(agent.id) is waiting to join the network, cooldown: $(agent.curr_replan_cooldown)")
         return
     end
 
@@ -103,7 +108,8 @@ function agent_step!(agent, model)
         return
     end
 
-    if agent_should_replan(agent, model)
+    if agent_should_replan(agent, model) && agent.curr_replan_cooldown <= 0
+        agent.curr_replan_cooldown = agent.min_replan_cooldown
         # t = @timed begin
             println("\tAgent $(agent.id) is replanning at time $(scaled_time(model))!")
             candidate_trajectory = construct_candidate(agent, model)
@@ -118,6 +124,9 @@ function agent_step!(agent, model)
         # end
         # agent.time_to_replan = t.time
     else
+        if agent.curr_replan_cooldown > 0
+            agent.curr_replan_cooldown -= 1
+        end
         agent.time_to_replan = 0.0
     end
 

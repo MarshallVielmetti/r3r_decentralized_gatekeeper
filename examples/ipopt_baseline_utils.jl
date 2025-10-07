@@ -249,6 +249,41 @@ function ipopt_baseline_model(;
 
     rng = Random.MersenneTwister(seed)
 
+    # Create random starting and goal positions if not provided
+    if isnothing(starting_positions) || isnothing(goal_positions)
+        starting_positions = SVector{3, Float64}[]
+        goal_positions = SVector{3, Float64}[]
+
+        for i in 1:n_agents
+            found_valid_position = false
+            while !found_valid_position
+                x_start = rand(rng) * (dim - 2.0) + 1.0
+                y_start = rand(rng) * (dim - 2.0) + 1.0
+                theta_start = rand(rng) * 2π
+
+                x_goal = rand(rng) * (dim - 2.0) + 1.00
+                y_goal = rand(rng) * (dim - 2.0) + 0.00
+
+                # Ensure starting position not too close to existing agents
+                # disgusting anti-pattern loop but whatever
+                too_close = false
+                for pos in starting_positions
+                    if r3r.squared_dist(SVector{2, Float64}([x_start, y_start]), pos[SOneTo(2)]) < (2*delta)^2
+                        too_close = true
+                        break
+                    end
+                end
+
+                if !too_close
+                    found_valid_position = true
+                    push!(starting_positions, SVector{3, Float64}(x_start, y_start, theta_start))
+                    push!(goal_positions, SVector{3, Float64}(x_goal, y_goal, 0.0))
+                end
+            end
+        end
+    end
+
+
     model = StandardABM(MpcAgent, ContinuousSpace(dims; periodic=false, spacing=0.1); (agent_step!)=mpc_agent_step!, (model_step!)=mpc_model_step!, rng, properties)
     for (starting_position, goal_position) in zip(starting_positions, goal_positions)
         agent = MpcAgent(model, starting_position[SOneTo(2)], v0, starting_position[3], goal_position[SOneTo(2)], omega_max, nothing, nothing, true)

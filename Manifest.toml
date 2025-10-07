@@ -2,7 +2,7 @@
 
 julia_version = "1.11.6"
 manifest_format = "2.0"
-project_hash = "616396c79043eb7b371dfdf7cf90e21c2f73d695"
+project_hash = "9679ee9493b8f87cf1b5b70ce2aea7e2b589ccb5"
 
 [[deps.ASL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -239,9 +239,9 @@ version = "0.4.1"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "a656525c8b46aa6a1c76891552ed5381bb32ae7b"
+git-tree-sha1 = "b0fd3f56fa442f81e0a47815c92245acfaaa4e34"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.30.0"
+version = "3.31.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
@@ -1270,7 +1270,7 @@ version = "0.5.5"
 
 [[deps.OccupancyGrids]]
 deps = ["DSP", "DataStructures", "RecipesBase", "StaticArrays", "YAML"]
-git-tree-sha1 = "b9cc67a20436f09fa4c8bed896d2aad0346ff676"
+git-tree-sha1 = "53cedea08d8c178123ba9065893eb289e5d8c00a"
 repo-rev = "main"
 repo-url = "https://github.com/MarshallVielmetti/OccupancyGrids.jl.git"
 uuid = "e6db0ae7-37ec-4765-aaf2-b047b4032ee3"

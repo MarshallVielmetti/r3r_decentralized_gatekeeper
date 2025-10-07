@@ -74,6 +74,7 @@ function Gatekeeper.construct_candidate(agent::DubinsAgent2D, model)
     end
 
     agent.time_to_replan = t.time
+    agent.count_neighbors_at_replan = length(collect(comms_radius(agent, model)))
 
     return candidate_trajectory
 end
@@ -543,6 +544,7 @@ function init_dubins_agent_2d_problem(;
     rrt_iterations::Int=2000,
     rrt_timeout::Float64=1.0,
     rrt_early_exit::Bool=true,
+    min_replan_cooldown::Int=1
 )
     # println("[TRACE] Entered init_dubins_agent_2d_problem")
     dims = (dim, dim)
@@ -579,7 +581,7 @@ function init_dubins_agent_2d_problem(;
 
     function add_agents!(model)
         for (starting_position, goal_position) in zip(starting_positions, goal_positions)
-            agent = DubinsAgent2D(model, starting_position[SOneTo(2)], v0, starting_position[3], false, false, false, goal_position, nothing, turning_radius, 0.0)
+            agent = DubinsAgent2D(model, starting_position[SOneTo(2)], v0, starting_position[3], false, false, false, goal_position, nothing, turning_radius, 0.0, 0, min_replan_cooldown, 0)
             add_agent_own_pos!(agent, model)
         end
     end
