@@ -15,7 +15,8 @@ The core of the pathfinding logic leverages a custom Julia implementation of the
 
 ### Dynamic System Animation
 
-https://github.com/MarshallVielmetti/r3r_decentralized_gatekeeper/assets/readme_images/full_system_plot.mp4
+https://github.com/user-attachments/assets/1619fd7c-7f65-4920-9e4c-d5e66d9e9490
+
 
 ## Key Features
 
