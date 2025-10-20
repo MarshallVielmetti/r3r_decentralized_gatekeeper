@@ -4,7 +4,18 @@ This project is a simulation framework written in Julia for decentralized, multi
 
 This is the code implementation of the paper
 ```
-T. M. Vielmetti, D. R. Agrawal, and D. Panagou, “R3R: Decentralized Multi-Agent Collision Avoidance with Infinite-Horizon Safety,” 2025, arXiv. doi: 10.48550/ARXIV.2510.06436.
+@online{vielmettiR3RDecentralizedMultiAgent2025,
+  title = {{{R3R}}: {{Decentralized Multi-Agent Collision Avoidance}} with {{Infinite-Horizon Safety}}},
+  shorttitle = {{{R3R}}},
+  author = {Vielmetti, Thomas Marshall and Agrawal, Devansh R. and Panagou, Dimitra},
+  date = {2025},
+  doi = {10.48550/ARXIV.2510.06436},
+  url = {https://arxiv.org/abs/2510.06436},
+  urldate = {2025-10-09},
+  pubstate = {prepublished},
+  version = {1},
+  keywords = {FOS: Computer and information sciences,Multiagent Systems (cs.MA),Read},
+}
 ```
 
 
