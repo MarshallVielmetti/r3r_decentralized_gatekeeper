@@ -2,7 +2,11 @@
 
 This project is a simulation framework written in Julia for decentralized, multi-agent motion planning. It implements the "Gatekeeper" algorithm, which allows multiple agents to navigate to their goals in a shared 2D environment while avoiding collisions with one another.
 
-The core of the pathfinding logic leverages a custom Julia implementation of the DynamicRRT* algorithm.
+This is the code implementation of the paper
+```
+T. M. Vielmetti, D. R. Agrawal, and D. Panagou, “R3R: Decentralized Multi-Agent Collision Avoidance with Infinite-Horizon Safety,” 2025, arXiv. doi: 10.48550/ARXIV.2510.06436.
+```
+
 
 ## Example Simulations
 
